@@ -36,7 +36,8 @@ def household(hass):
     for name in ("living_room_air", "battery_temperature", "bedroom_air"):
         entry = registry.async_get_or_create(
             "sensor", "demo", name, suggested_object_id=name,
-            original_device_class="temperature", device_id=device.id, config_entry=demo,
+            original_name=name.replace("_", " ").title(), original_device_class="temperature",
+            device_id=device.id, config_entry=demo,
         )
         entities[name] = entry.entity_id
         hass.states.async_set(

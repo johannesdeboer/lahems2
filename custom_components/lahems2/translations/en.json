@@ -1,0 +1,218 @@
+{
+  "config": {
+    "step": {
+      "area": {
+        "title": "Heating zone",
+        "description": "Choose an area to see nearby temperature sensors first, or leave it blank to start with all areas.",
+        "data": {
+          "area": "Preferred area"
+        }
+      },
+      "area_temperatures": {
+        "title": "Temperature sensors in the preferred area",
+        "description": "Suggestions for **{area}**, in priority order: {suggestions}. Choose a sensor here or continue to the All areas picker.",
+        "data": {
+          "indoor_temperature": "Primary indoor temperature",
+          "backup_temperature": "Backup indoor temperature"
+        }
+      },
+      "temperatures": {
+        "title": "Temperature sensors · All areas",
+        "description": "Confirm or change your selections. This list includes temperature sensors from every area and unassigned sensors.",
+        "data": {
+          "indoor_temperature": "Primary indoor temperature",
+          "backup_temperature": "Backup indoor temperature",
+          "outdoor_temperature": "Outdoor temperature",
+          "temperature_max_age_minutes": "Temperature freshness limit (minutes)"
+        },
+        "data_description": {
+          "backup_temperature": "LAHEMS2 uses this sensor if the primary reading is unusable.",
+          "temperature_max_age_minutes": "Maximum time since Home Assistant last reported a temperature. Applies to primary, backup, outdoor and stove room temperature sensors."
+        }
+      },
+      "heat": {
+        "title": "Heat sources",
+        "description": "Select the heat pump thermostat. Its current setpoint is the comfort baseline. The pellet heat-request switch and separate meters are optional.",
+        "data": {
+          "thermostat": "Heat pump thermostat",
+          "heat_pump_power": "Heat pump power",
+          "heat_pump_energy": "Heat pump energy",
+          "backup_heater_meter": "Electric backup heater meter",
+          "pellet_heat_request": "Pellet Heat Request",
+          "heat_demand": "Separate heat-demand entity",
+          "stove_room_temperature": "Stove room temperature",
+          "shared_circuit": "The heat sources share a hydraulic circuit",
+          "pellet_price_threshold": "Pellet price threshold (currency/kWh of electricity)",
+          "pellet_budget": "Pellet budget (currency)"
+        },
+        "data_description": {
+          "pellet_heat_request": "Select the switch entity for your heat request, such as an ESPHome relay. LAHEMS2 reads its current state."
+        }
+      },
+      "energy": {
+        "title": "Grid, prices, solar and EV",
+        "description": "Confirm one primary grid meter and review the suggested price and solar sources. You can leave prices blank and add them later.",
+        "data": {
+          "grid_meter": "Primary grid meter",
+          "import_price": "Import price",
+          "export_price": "Export price",
+          "pv_power": "Measured solar power",
+          "solar_forecast": "Solar forecast",
+          "ev_power": "Measured EV power",
+          "ev_schedule": "Scheduled EV power from the external controller",
+          "add_battery": "Add a battery",
+          "tariff_max_age_minutes": "Tariff freshness limit (minutes)"
+        },
+        "data_description": {
+          "tariff_max_age_minutes": "Maximum time since Home Assistant last reported an import or export price. Use 15 minutes for a source that reports each quarter-hour tariff."
+        }
+      },
+      "battery": {
+        "title": "Battery",
+        "description": "Enter the measurements, limits, and controller for battery {number}. Select Add another battery to include an additional battery.",
+        "data": {
+          "battery_power": "Measured battery power",
+          "battery_soc": "Battery state of charge",
+          "capacity": "Usable capacity (kWh)",
+          "charge_limit": "Charge limit (W)",
+          "discharge_limit": "Discharge limit (W)",
+          "reserve": "Minimum reserve (%)",
+          "power_sign": "Power sign convention",
+          "controller": "Battery controller",
+          "add_another": "Add another battery",
+          "remove_battery": "Remove this battery"
+        }
+      },
+      "review": {
+        "title": "Review your bindings",
+        "description": "LAHEMS2 runs in **{mode}**. Saving starts read-only monitoring.\n\n{readings}"
+      }
+    },
+    "error": {
+      "invalid_area": "This area no longer exists. Select another area or leave the area blank.",
+      "required_entity": "Select an entity for this role.",
+      "invalid_entity": "Select an enabled entity of the expected type.",
+      "unreadable_relay": "The switch must report On or Off before it can be added.",
+      "duplicate_temperature": "Choose a different backup sensor.",
+      "invalid_number": "Enter a value within the displayed limits.",
+      "required_setting": "Enter a value for this battery setting."
+    },
+    "abort": {
+      "already_configured": "LAHEMS2 is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "area": {
+        "title": "Heating zone",
+        "description": "Choose an area to see nearby temperature sensors first, or leave it blank to start with all areas.",
+        "data": {
+          "area": "Preferred area"
+        }
+      },
+      "area_temperatures": {
+        "title": "Temperature sensors in the preferred area",
+        "description": "Suggestions for **{area}**, in priority order: {suggestions}. Choose a sensor here or continue to the All areas picker.",
+        "data": {
+          "indoor_temperature": "Primary indoor temperature",
+          "backup_temperature": "Backup indoor temperature"
+        }
+      },
+      "temperatures": {
+        "title": "Temperature sensors · All areas",
+        "description": "Confirm or change your selections. This list includes temperature sensors from every area and unassigned sensors.",
+        "data": {
+          "indoor_temperature": "Primary indoor temperature",
+          "backup_temperature": "Backup indoor temperature",
+          "outdoor_temperature": "Outdoor temperature",
+          "temperature_max_age_minutes": "Temperature freshness limit (minutes)"
+        },
+        "data_description": {
+          "backup_temperature": "LAHEMS2 uses this sensor if the primary reading is unusable.",
+          "temperature_max_age_minutes": "Maximum time since Home Assistant last reported a temperature. Applies to primary, backup, outdoor and stove room temperature sensors."
+        }
+      },
+      "heat": {
+        "title": "Heat sources",
+        "description": "Select the heat pump thermostat. Its current setpoint is the comfort baseline. The pellet heat-request switch and separate meters are optional.",
+        "data": {
+          "thermostat": "Heat pump thermostat",
+          "heat_pump_power": "Heat pump power",
+          "heat_pump_energy": "Heat pump energy",
+          "backup_heater_meter": "Electric backup heater meter",
+          "pellet_heat_request": "Pellet Heat Request",
+          "heat_demand": "Separate heat-demand entity",
+          "stove_room_temperature": "Stove room temperature",
+          "shared_circuit": "The heat sources share a hydraulic circuit",
+          "pellet_price_threshold": "Pellet price threshold (currency/kWh of electricity)",
+          "pellet_budget": "Pellet budget (currency)"
+        },
+        "data_description": {
+          "pellet_heat_request": "Select the switch entity for your heat request, such as an ESPHome relay. LAHEMS2 reads its current state."
+        }
+      },
+      "energy": {
+        "title": "Grid, prices, solar and EV",
+        "description": "Confirm one primary grid meter and review the suggested price and solar sources. You can leave prices blank and add them later.",
+        "data": {
+          "grid_meter": "Primary grid meter",
+          "import_price": "Import price",
+          "export_price": "Export price",
+          "pv_power": "Measured solar power",
+          "solar_forecast": "Solar forecast",
+          "ev_power": "Measured EV power",
+          "ev_schedule": "Scheduled EV power from the external controller",
+          "add_battery": "Add a battery",
+          "tariff_max_age_minutes": "Tariff freshness limit (minutes)"
+        },
+        "data_description": {
+          "tariff_max_age_minutes": "Maximum time since Home Assistant last reported an import or export price. Use 15 minutes for a source that reports each quarter-hour tariff."
+        }
+      },
+      "battery": {
+        "title": "Battery",
+        "description": "Enter the measurements, limits, and controller for battery {number}. Select Add another battery to include an additional battery.",
+        "data": {
+          "battery_power": "Measured battery power",
+          "battery_soc": "Battery state of charge",
+          "capacity": "Usable capacity (kWh)",
+          "charge_limit": "Charge limit (W)",
+          "discharge_limit": "Discharge limit (W)",
+          "reserve": "Minimum reserve (%)",
+          "power_sign": "Power sign convention",
+          "controller": "Battery controller",
+          "add_another": "Add another battery",
+          "remove_battery": "Remove this battery"
+        }
+      },
+      "review": {
+        "title": "Review your bindings",
+        "description": "LAHEMS2 runs in **{mode}**. Saving starts read-only monitoring.\n\n{readings}"
+      }
+    },
+    "error": {
+      "invalid_area": "This area no longer exists. Select another area or leave the area blank.",
+      "required_entity": "Select an entity for this role.",
+      "invalid_entity": "Select an enabled entity of the expected type.",
+      "unreadable_relay": "The switch must report On or Off before it can be added.",
+      "duplicate_temperature": "Choose a different backup sensor.",
+      "invalid_number": "Enter a value within the displayed limits.",
+      "required_setting": "Enter a value for this battery setting."
+    }
+  },
+  "selector": {
+    "power_sign": {
+      "options": {
+        "positive_charge": "Positive power means charging",
+        "positive_discharge": "Positive power means discharging"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "data_status": {
+        "name": "Data Status"
+      }
+    }
+  }
+}

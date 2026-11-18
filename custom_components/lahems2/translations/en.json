@@ -86,6 +86,14 @@
       "review": {
         "title": "Review your bindings",
         "description": "LAHEMS2 runs in **{mode}**. Saving starts read-only monitoring.\n\n{readings}"
+      },
+      "user": {
+        "title": "Set up LAHEMS2",
+        "description": "Configure one section at a time and come back later, or complete the guided setup now.",
+        "menu_options": {
+          "configure_in_parts": "Configure in parts",
+          "guided_setup": "Guided setup"
+        }
       }
     },
     "error": {
@@ -171,7 +179,7 @@
       },
       "battery": {
         "title": "Battery",
-        "description": "Enter the measurements, limits, and controller for battery {number}. Select Add another battery to include an additional battery.",
+        "description": "Enter the measurements, limits, and controller for battery {number}.",
         "data": {
           "battery_power": "Measured battery power",
           "battery_soc": "Battery state of charge",
@@ -188,6 +196,24 @@
       "review": {
         "title": "Review your bindings",
         "description": "LAHEMS2 runs in **{mode}**. Saving starts read-only monitoring.\n\n{readings}"
+      },
+      "init": {
+        "title": "LAHEMS2 settings",
+        "description": "Choose one section to edit and save. You can close this dialog and return anytime.",
+        "menu_options": {
+          "section_temperatures": "Heating zone and sensors",
+          "section_heat": "Heat sources and pellet boiler",
+          "section_energy": "Grid, tariffs, solar and EV",
+          "section_batteries": "Batteries",
+          "guided_setup": "Edit all settings"
+        }
+      },
+      "choose_battery": {
+        "title": "Choose a battery",
+        "description": "Add a battery or select one to edit or remove.",
+        "data": {
+          "battery": "Battery"
+        }
       }
     },
     "error": {
@@ -198,6 +224,9 @@
       "duplicate_temperature": "Choose a different backup sensor.",
       "invalid_number": "Enter a value within the displayed limits.",
       "required_setting": "Enter a value for this battery setting."
+    },
+    "abort": {
+      "batteries_changed": "The batteries changed while this form was open. Reopen Configure and select the battery again."
     }
   },
   "selector": {

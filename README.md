@@ -23,6 +23,16 @@ Start the same setup wizard from **Add integration**.
 
 ## Set up and edit your profile
 
+Choose **Configure in parts** when adding LAHEMS2 to create the integration
+immediately. Open **Configure** on its integration entry and select **Heating
+zone and sensors**, **Heat sources and pellet boiler**, **Grid, tariffs, solar
+and EV**, or **Batteries**. Each section saves independently. You can close the
+dialog between sections and return later. Data Status lists the inputs that
+still need attention.
+
+Choose **Guided setup** to enter everything in one session, or **Edit all settings**
+from Configure to revisit the full sequence.
+
 1. Choose a preferred Home Assistant area if you want area suggestions. LAHEMS2
    checks the entity's area first and uses the device's area when the entity
    has none. It ranks likely room-air sensors ahead of equipment sensors.

@@ -70,6 +70,13 @@ async def submit(manager, result, step, values):
     return await manager.async_configure(result["flow_id"], values)
 
 
+async def choose(manager, result, step):
+    """Choose a section through Home Assistant's flow manager."""
+    assert result["type"] == FlowResultType.MENU
+    assert step in result["menu_options"]
+    return await manager.async_configure(result["flow_id"], {"next_step_id": step})
+
+
 def status(hass, entry):
     """Access the diagnostic sensor through its registered identity."""
     entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_data_status")
@@ -90,6 +97,7 @@ async def test_setup_and_edit_in_shadow_mode(hass, household, with_relay):
     # Fail at the call boundary before a service can run on any device.
     with patch.object(type(hass.services), "async_call", autospec=True) as call_service:
         result = await setup.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await choose(setup, result, "guided_setup")
         result = await submit(setup, result, "area", {"area": living.id})
         suggestions = result["description_placeholders"]["suggestions"]
         assert backup not in suggestions
@@ -135,6 +143,7 @@ async def test_setup_and_edit_in_shadow_mode(hass, household, with_relay):
 
         options = hass.config_entries.options
         result = await options.async_init(entry.entry_id)
+        result = await choose(options, result, "guided_setup")
         result = await submit(options, result, "area", {"area": bedroom.id})
         assert result["description_placeholders"]["suggestions"] == f"`{backup}`"
         result = await submit(options, result, "area_temperatures", {PRIMARY: backup})
@@ -224,3 +233,55 @@ async def test_freshness_defaults_and_overrides(hass, household):
         adjusted = inputs.snapshot(profile)
         assert adjusted["roles"]["Import price"]["status"] == "Stale reading"
         assert adjusted["active_indoor_source"] == "Primary"
+
+
+async def test_configure_in_parts(hass, household):
+    """Finish sections in separate sessions and keep prior settings."""
+    setup = hass.config_entries.flow
+    result = await setup.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await choose(setup, result, "configure_in_parts")
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    await hass.async_block_till_done()
+    assert status(hass, entry)["roles"]["Primary indoor temperature"]["status"] == "Missing source"
+
+    options = hass.config_entries.options
+    result = await choose(options, await options.async_init(entry.entry_id), "section_heat")
+    result = await submit(options, result, "heat", {"thermostat": THERMOSTAT, RELAY: RELAY_ENTITY})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+
+    result = await choose(options, await options.async_init(entry.entry_id), "section_temperatures")
+    result = await submit(options, result, "area", {})
+    result = await submit(options, result, "temperatures", {PRIMARY: UNASSIGNED, TEMPERATURE_MAX_AGE: 8})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert RELAY in entry.options[BINDINGS]
+
+    result = await choose(options, await options.async_init(entry.entry_id), "section_energy")
+    result = await submit(options, result, "energy", {"grid_meter": GRID})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.options[SETTINGS][TEMPERATURE_MAX_AGE] == 8
+    assert PRIMARY in entry.options[BINDINGS]
+
+    result = await choose(options, await options.async_init(entry.entry_id), "section_batteries")
+    battery = {
+        "battery_power": "sensor.battery_power",
+        "battery_soc": "sensor.battery_state_of_charge",
+        "capacity": 5,
+        "charge_limit": 2000,
+        "discharge_limit": 1800,
+        "reserve": 20,
+        "power_sign": "positive_charge",
+        "controller": "Test controller",
+    }
+    result = await submit(options, result, "battery", battery)
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert len(entry.options["batteries"]) == 1
+
+    result = await choose(options, await options.async_init(entry.entry_id), "section_batteries")
+    result = await submit(options, result, "choose_battery", {"battery": "0"})
+    result = await submit(options, result, "battery", {"remove_battery": True})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["batteries"] == []
+    assert status(hass, entry)["active_indoor_temperature"]["entity_id"] == UNASSIGNED
+    assert status(hass, entry)["mode"] == MODE

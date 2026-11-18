@@ -66,6 +66,7 @@ class _Wizard:
         self._inputs = Inputs(self.hass)
         self._previous = previous
         self._profile = {BINDINGS: {}, BATTERIES: [], SETTINGS: {}}
+        self._section = None
         self._temperature_choices = {}
         self._battery_index = 0
         self._saved_batteries = previous.get(BATTERIES, [])
@@ -182,6 +183,8 @@ class _Wizard:
             if not errors:
                 self._profile[BINDINGS].update(bindings)
                 self._profile[SETTINGS][TEMPERATURE_MAX_AGE] = max_age
+                if self._section == "temperatures":
+                    return self._finish()
                 return await self.async_step_heat()
         values = self._saved_values(ZONE_ROLES) | self._temperature_choices
         return self._form(
@@ -208,9 +211,11 @@ class _Wizard:
                 self._profile[SETTINGS].update({
                     key: value for key, value in user_input.items() if key not in HEAT_ROLES
                 })
+                if self._section == "heat":
+                    return self._finish()
                 return await self.async_step_energy()
         values = self._saved_values(HEAT_ROLES) | self._previous.get(SETTINGS, {})
-        if not self._previous:
+        if "thermostat" not in values:
             thermostats = self._inputs.candidates(HEAT_ROLES["thermostat"])
             if len(thermostats) == 1:
                 values["thermostat"] = thermostats[0].entity_id
@@ -220,8 +225,9 @@ class _Wizard:
         max_age = self._freshness_default(TARIFF_MAX_AGE)
         fields = _role_fields(ENERGY_ROLES) | {
             vol.Required(TARIFF_MAX_AGE, default=max_age): _number(1),
-            vol.Optional("add_battery", default=False): selector.BooleanSelector(),
         }
+        if self._section != "energy":
+            fields[vol.Optional("add_battery", default=False)] = selector.BooleanSelector()
         errors = {}
         if user_input is not None:
             bindings, errors = self._validate_bindings(ENERGY_ROLES, user_input, self._previous.get(BINDINGS, {}))
@@ -231,10 +237,14 @@ class _Wizard:
             if not errors:
                 self._profile[BINDINGS].update(bindings)
                 self._profile[SETTINGS][TARIFF_MAX_AGE] = max_age
+                if self._section == "energy":
+                    return self._finish()
                 if user_input.get("add_battery") or self._saved_batteries:
                     return await self.async_step_battery()
                 return await self.async_step_review()
-        values = self._saved_values(ENERGY_ROLES) if self._previous else self._inputs.energy_suggestions()
+        values = self._saved_values(ENERGY_ROLES)
+        if not values:
+            values = self._inputs.energy_suggestions()
         return self._form("energy", fields, user_input if user_input is not None else values, errors)
 
     async def async_step_battery(self, user_input=None):
@@ -249,8 +259,9 @@ class _Wizard:
                 "options": ["positive_charge", "positive_discharge"], "translation_key": "power_sign",
             }),
             vol.Optional("controller"): selector.TextSelector(),
-            vol.Optional("add_another", default=False): selector.BooleanSelector(),
         }
+        if self._section != "batteries":
+            fields[vol.Optional("add_another", default=False)] = selector.BooleanSelector()
         if existing:
             fields[vol.Optional("remove_battery", default=False)] = selector.BooleanSelector()
         errors = {}
@@ -271,6 +282,8 @@ class _Wizard:
                         **{key: user_input[key] for key in (*minimums, "power_sign", "controller")},
                     })
             if not errors:
+                if self._section == "batteries":
+                    return self._finish()
                 self._battery_index += 1
                 if self._battery_index < len(self._saved_batteries) or user_input.get("add_another"):
                     return await self.async_step_battery()
@@ -319,7 +332,17 @@ class Lahems2ConfigFlow(_Wizard, config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         self._async_abort_entries_match()
         self._start({})
-        return await self.async_step_area(user_input)
+        return self.async_show_menu(
+            step_id="user", menu_options=["configure_in_parts", "guided_setup"]
+        )
+
+    async def async_step_configure_in_parts(self, user_input=None):
+        """Create an entry so configuration can continue later."""
+        return self._finish()
+
+    async def async_step_guided_setup(self, user_input=None):
+        """Start the complete guided wizard."""
+        return await self.async_step_area()
 
     def _finish(self):
         self._async_abort_entries_match()
@@ -331,7 +354,72 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
 
     async def async_step_init(self, user_input=None):
         self._start(dict(self.config_entry.options or self.config_entry.data))
-        return await self.async_step_area(user_input)
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["section_temperatures", "section_heat", "section_energy", "section_batteries", "guided_setup"],
+        )
+
+    async def async_step_section_temperatures(self, user_input=None):
+        self._section = "temperatures"
+        return await self.async_step_area()
+
+    async def async_step_section_heat(self, user_input=None):
+        self._section = "heat"
+        return await self.async_step_heat()
+
+    async def async_step_section_energy(self, user_input=None):
+        self._section = "energy"
+        return await self.async_step_energy()
+
+    async def async_step_section_batteries(self, user_input=None):
+        self._section = "batteries"
+        return await self.async_step_choose_battery()
+
+    async def async_step_guided_setup(self, user_input=None):
+        return await self.async_step_area()
+
+    async def async_step_choose_battery(self, user_input=None):
+        """Choose one saved battery or create a new one."""
+        if not self._saved_batteries:
+            return await self.async_step_battery()
+
+        choices = [{"value": "new", "label": "Add a battery"}]
+        for index, battery in enumerate(self._saved_batteries):
+            entity = self._inputs.entity_id(battery[BINDINGS]["battery_power"])
+            choices.append({"value": str(index), "label": f"Battery {index + 1} · {entity}"})
+        if user_input is not None:
+            selected = user_input["battery"]
+            self._battery_index = len(self._saved_batteries) if selected == "new" else int(selected)
+            return await self.async_step_battery()
+        return self._form(
+            "choose_battery", {vol.Required("battery"): selector.SelectSelector({"options": choices})}
+        )
 
     def _finish(self):
-        return self.async_create_entry(title="", data=self._profile)
+        if self._section is None:
+            return self.async_create_entry(title="", data=self._profile)
+
+        profile = dict(self.config_entry.options or self.config_entry.data)
+        if self._section == "batteries":
+            saved = profile.get(BATTERIES, [])
+            if saved != self._saved_batteries:
+                return self.async_abort(reason="batteries_changed")
+            batteries = list(saved)
+            batteries[self._battery_index:self._battery_index + 1] = self._profile[BATTERIES]
+            profile[BATTERIES] = batteries
+        else:
+            roles, setting_keys = {
+                "temperatures": (ZONE_ROLES, (TEMPERATURE_MAX_AGE,)),
+                "heat": (HEAT_ROLES, ("shared_circuit", "pellet_price_threshold", "pellet_budget")),
+                "energy": (ENERGY_ROLES, (TARIFF_MAX_AGE,)),
+            }[self._section]
+            profile[BINDINGS] = {
+                key: value for key, value in profile.get(BINDINGS, {}).items() if key not in roles
+            } | self._profile[BINDINGS]
+            profile[SETTINGS] = {
+                key: value for key, value in profile.get(SETTINGS, {}).items() if key not in setting_keys
+            } | self._profile[SETTINGS]
+            if self._section == "temperatures":
+                profile[AREA] = self._profile[AREA]
+
+        return self.async_create_entry(title="", data=profile)

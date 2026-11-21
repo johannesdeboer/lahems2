@@ -3,11 +3,8 @@
 <img src="custom_components/lahems2/brand/icon.png" alt="LAHEMS2" width="96">
 
 LAHEMS2 connects Home Assistant measurements for one heating zone, electricity use,
-and optional solar, pellet heat, home batteries, and an EV. This development
-milestone provides an English setup wizard and a **Data Status** diagnostic
-sensor. It starts in **Shadow Mode** and only reads Home Assistant state.
-Actual and Proposed views, forecasts interpreted for planning, and recommendations
-are planned for the next milestone.
+and optional solar, pellet heat, home batteries, and an EV. The integration provides an English setup wizard and **Data Status**, **Actual**,
+and **Proposed** sensors. It runs in **Shadow Mode** and only reads Home Assistant state.
 
 ## Install on a test instance
 
@@ -77,10 +74,32 @@ Data Status checks for staleness every minute and when a bound entity changes.
 Forecast and schedule bindings report availability and leave
 interpretation of future values to the planner.
 
+## View Actual and Proposed
+
+Open the LAHEMS2 integration in **Settings → Devices & services** and select
+**Actual** or **Proposed**. In **Developer Tools → States**, you can see
+their full attributes. For an at-a-glance view, edit a Home Assistant dashboard,
+choose **Add card → Manual**, and paste the
+[Shadow Mode card YAML](docs/shadow-mode-card.yaml). Use your actual entity
+IDs if Home Assistant assigned different ones.
+
+**Actual** displays the active indoor temperature, thermostat setpoint and
+readings from your configured sources. **Proposed** explains the current
+comfort check and, when configured, compares the current import tariff to the
+pellet threshold. Enter the threshold in your Home Assistant currency per kWh.
+Configure the ESPHome pellet switch to enable this comparison. **Review pellet heat**
+is a prompt for manual review. The proposal does not model pellet budget,
+shared-circuit constraints, future tariffs, PV forecasts, or EV schedules.
+
 To uninstall, remove the LAHEMS2 integration entry in **Devices & services**
 and then remove the component through the Marketplace or remove the manually
 copied component folder and restart. Configuration is stored with the Home
 Assistant entry and survives integration updates.
+
+## Energy planning roadmap
+
+See the [energy planning roadmap](docs/energy-planning-roadmap.md) for
+stationary battery optimisation, bidirectional EVs and external controllers.
 
 ## GitHub testing and release
 
@@ -94,13 +113,13 @@ Run the Core integration tests in a Python 3.14.2 or newer environment.
 
 ```sh
 python -m pip install -r requirements-test.txt
-python -m pytest
+python -c "import homeassistant; import pytest; raise SystemExit(pytest.main())"
 ```
 
 Run the standalone validation and fallback tests with
 `python -m unittest discover -s tests -p test_model.py`.
 
-Before publishing the first release:
+Before publishing a release:
 
 - Run the Core 2026.11.1 tests, Hassfest, and the HACS Action. Set a GitHub
   repository description and topics and enable Issues for HACS validation.
@@ -112,7 +131,7 @@ Before publishing the first release:
 - Confirm the MIT license for publication and review any future code or
   fixtures brought over from private prototypes. The tests in this milestone
   use synthetic entities.
-- Match the version in `manifest.json` to the first release tag (`0.1.0`),
+- Match the version in `manifest.json` to the release tag,
   publish the GitHub release, and verify installation from the repository URL
   through Marketplace. Catalog listing is optional.
 

@@ -14,5 +14,5 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload the integration's Data Status sensor."""
+    """Unload the integration's read-only sensors."""
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)

@@ -212,6 +212,12 @@
     "sensor": {
       "data_status": {
         "name": "Data Status"
+      },
+      "actual": {
+        "name": "Actual"
+      },
+      "proposed": {
+        "name": "Proposed"
       }
     }
   }

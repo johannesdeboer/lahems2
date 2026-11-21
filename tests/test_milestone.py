@@ -224,3 +224,55 @@ async def test_freshness_defaults_and_overrides(hass, household):
         adjusted = inputs.snapshot(profile)
         assert adjusted["roles"]["Import price"]["status"] == "Stale reading"
         assert adjusted["active_indoor_source"] == "Primary"
+
+
+async def test_actual_and_proposed_update_without_device_calls(hass, household):
+    """Update the dashboard entities from thermostat, temperature and tariff changes."""
+    (living, _), entities = household
+    indoor = entities["living_room_air"]
+    hass.config.currency = "EUR"
+    inputs = Inputs(hass)
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        "area": living.id,
+        BINDINGS: {
+            PRIMARY: inputs.bind(indoor),
+            "thermostat": inputs.bind(THERMOSTAT),
+            "import_price": inputs.bind("sensor.import_price"),
+            RELAY: inputs.bind(RELAY_ENTITY),
+        },
+        SETTINGS: {"pellet_price_threshold": 0.30},
+    })
+    entry.add_to_hass(hass)
+    with patch.object(type(hass.services), "async_call", autospec=True) as call_service:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        registry = er.async_get(hass)
+        actual_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_actual")
+        proposed_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_proposed")
+        assert hass.states.get(actual_id).attributes["indoor_temperature"] == "19.5"
+        assert hass.states.get(proposed_id).state == "Heat pump is the baseline"
+
+        hass.states.async_set("sensor.import_price", "0.40", {"unit_of_measurement": "EUR/kWh"})
+        await hass.async_block_till_done()
+        proposal = hass.states.get(proposed_id)
+        assert proposal.state == "Review pellet heat"
+        assert proposal.attributes["comfort_gap_celsius"] == 1.5
+
+        hass.states.async_set("sensor.import_price", "40", {"unit_of_measurement": "ct/kWh"})
+        await hass.async_block_till_done()
+        assert hass.states.get(proposed_id).state == "Waiting for import tariff"
+
+        hass.states.async_set(THERMOSTAT, "off", {"temperature": 21, "temperature_unit": "°C"})
+        await hass.async_block_till_done()
+        assert hass.states.get(proposed_id).state == "Review thermostat mode"
+
+        hass.states.async_set(indoor, "69.8", {"device_class": "temperature", "unit_of_measurement": "°F"})
+        await hass.async_block_till_done()
+        assert hass.states.get(proposed_id).state == "At or above setpoint"
+
+        hass.states.async_set(indoor, "unavailable", {"device_class": "temperature"})
+        await hass.async_block_till_done()
+        assert hass.states.get(actual_id).state == "Indoor temperature unavailable"
+        assert hass.states.get(proposed_id).state == "Waiting for comfort inputs"
+        assert hass.states.get(RELAY_ENTITY).state == "off"
+        call_service.assert_not_called()

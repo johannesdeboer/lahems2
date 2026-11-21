@@ -1,0 +1,23 @@
+type: markdown
+title: LAHEMS2 · Shadow Mode
+content: |
+  **Data status:** {{ states('sensor.lahems2_data_status') }}
+
+  ### Actual
+  {% set actual = 'sensor.lahems2_actual' %}
+  {% set indoor = state_attr(actual, 'indoor_temperature') %}
+  {% set source = state_attr(actual, 'indoor_source') %}
+  {% set target = state_attr(actual, 'comfort_target') %}
+  Indoor: {{ indoor if indoor is not none else 'Unavailable' }} {{ state_attr(actual, 'indoor_temperature_unit') or '' }}{% if source %} ({{ source }}){% endif %}
+
+  Setpoint: {{ target if target is not none else 'Unavailable' }} {{ state_attr(actual, 'comfort_target_unit') or '' }}
+
+  {% for label, input in (state_attr(actual, 'inputs') or {}).items() %}
+  - **{{ label }}:** {% if input.usable %}{{ input.reading }} {{ input.unit or '' }}{% else %}{{ input.status }}{% endif %}
+
+  {% endfor %}
+
+  ### Proposed
+  **{{ states('sensor.lahems2_proposed') }}**
+
+  {{ state_attr('sensor.lahems2_proposed', 'reason') or '' }}

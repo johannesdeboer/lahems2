@@ -21,3 +21,11 @@ content: |
   **{{ states('sensor.lahems2_proposed') }}**
 
   {{ state_attr('sensor.lahems2_proposed', 'reason') or '' }}
+
+  ### Energy balance
+  {% set balance = 'sensor.lahems2_energy_balance' %}
+  {% for label, key in [('Grid', 'grid_w'), ('Solar', 'pv_w'), ('EV', 'ev_w'), ('Unallocated load', 'unallocated_load_w')] %}
+  {% set power = state_attr(balance, key) %}
+  - **{{ label }}:** {{ (power ~ ' W') if power is not none else 'Unknown' }}
+  {% endfor %}
+  - **External EV schedule:** {{ states(balance) }}

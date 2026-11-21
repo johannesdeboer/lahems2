@@ -276,3 +276,42 @@ async def test_actual_and_proposed_update_without_device_calls(hass, household):
         assert hass.states.get(proposed_id).state == "Waiting for comfort inputs"
         assert hass.states.get(RELAY_ENTITY).state == "off"
         call_service.assert_not_called()
+
+
+async def test_energy_balance_and_external_schedule(hass, household):
+    """Expose an externally owned plan and keep EV export separate from PV."""
+    from homeassistant.util.dt import utcnow
+
+    now = utcnow()
+    start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+    end = start + timedelta(minutes=15)
+    hass.states.async_set(GRID, "-1", {"device_class": "power", "unit_of_measurement": "kW"})
+    hass.states.async_set("sensor.ev_power", "1500", {"device_class": "power", "unit_of_measurement": "W"})
+    hass.states.async_set("sensor.ev_plan", "active", {"intervals": [
+        {"start": start.isoformat(), "end": end.isoformat(), "power_w": 1500},
+    ]})
+    inputs = Inputs(hass)
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        BINDINGS: {key: inputs.bind(entity) for key, entity in {
+            "grid_meter": GRID, "ev_power": "sensor.ev_power", "ev_schedule": "sensor.ev_plan",
+        }.items()},
+        SETTINGS: {"ev_positive_discharge": True},
+    })
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_energy_balance")
+    attributes = hass.states.get(entity_id).attributes
+    assert attributes["grid_w"] == -1000
+    assert attributes["ev_w"] == -1500
+    assert attributes["pv_w"] is None
+    assert attributes["unallocated_load_w"] == 500
+    assert attributes["external_ev_schedule"][0]["power_w"] == -1500
+
+    hass.states.async_set("sensor.ev_plan", "active", {"intervals": [
+        {"start": (start - timedelta(minutes=15)).isoformat(), "end": start.isoformat(), "power_w": 1500},
+    ]})
+    await hass.async_block_till_done()
+    state = hass.states.get(entity_id)
+    assert state.state == "Expired"
+    assert state.attributes["external_ev_schedule"] == []

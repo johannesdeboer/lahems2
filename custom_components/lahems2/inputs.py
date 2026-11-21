@@ -23,6 +23,7 @@ from .const import (
     SETTINGS,
     Role,
 )
+from .energy import energy_snapshot
 from .model import active_temperature, numeric_value
 
 _INDOOR = {"indoor", "room", "living", "bedroom", "kitchen", "hall", "ambient", "lounge"}
@@ -257,7 +258,12 @@ class Inputs:
                     key, role, battery[BINDINGS].get(key)
                 )
         active = active_temperature(readings[ROLES[PRIMARY].label], readings[ROLES[BACKUP].label])
+        schedule = readings[ROLES["ev_schedule"].label]
+        schedule_state = self.hass.states.get(schedule["entity_id"]) if schedule["usable"] else None
         return {
+            "energy": energy_snapshot(
+                readings, profile, schedule_state.attributes.get("intervals") if schedule_state else None, utcnow()
+            ),
             "roles": readings,
             "active_indoor_temperature": active,
             "active_indoor_source": (

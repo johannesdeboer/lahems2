@@ -26,6 +26,7 @@ async def async_setup_entry(
         DataStatus(coordinator, entry),
         Actual(coordinator, entry),
         Proposed(coordinator, entry),
+        EnergyBalance(coordinator, entry),
     ])
 
 
@@ -106,7 +107,14 @@ class DataStatus(SnapshotSensor):
     @property
     def extra_state_attributes(self) -> dict:
         data = self.coordinator.data
-        return {"mode": MODE, "preferred_area": data["preferred_area"], **data["snapshot"]}
+        snapshot = data["snapshot"]
+        return {
+            "mode": MODE,
+            "preferred_area": data["preferred_area"],
+            "roles": snapshot["roles"],
+            "active_indoor_temperature": snapshot["active_indoor_temperature"],
+            "active_indoor_source": snapshot["active_indoor_source"],
+        }
 
 
 class Actual(SnapshotSensor):
@@ -153,3 +161,20 @@ class Proposed(SnapshotSensor):
     def extra_state_attributes(self) -> dict:
         _, details = self.coordinator.data["proposal"]
         return {"mode": MODE, **details}
+
+
+
+class EnergyBalance(SnapshotSensor):
+    """Expose normalized measured flows and the external EV plan."""
+
+    _attr_translation_key = "energy_balance"
+    _attr_icon = "mdi:transmission-tower"
+    _unrecorded_attributes = frozenset({"external_ev_schedule", "batteries"})
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.data["snapshot"]["energy"]["ev_schedule_status"]
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return self.coordinator.data["snapshot"]["energy"]

@@ -91,6 +91,37 @@ Configure the ESPHome pellet switch to enable this comparison. **Review pellet h
 is a prompt for manual review. The proposal does not model pellet budget,
 shared-circuit constraints, future tariffs, PV forecasts, or EV schedules.
 
+## Read Energy Balance
+
+Open **Settings → Devices & services → LAHEMS2 → Configure** to add the
+optional EV connection, charge level, departure timestamp and required
+departure charge. Set the grid and EV power signs for your meters and enter
+import and export limits in watts if known. Existing profiles default to
+positive grid import and positive EV charging. Batteries keep their own
+configured sign convention.
+
+**Energy Balance** shows grid, solar, EV and stationary battery power
+separately. Positive storage power means charging. The unallocated load is
+grid plus measured PV minus measured EV and battery power. It includes any
+unmetered loads or generation. It is unknown if the grid source is an energy
+counter or a configured flow has no usable power reading.
+
+For a future EV plan, select a Home Assistant sensor whose `intervals` attribute
+contains rows such as:
+
+```yaml
+intervals:
+  - start: "2027-01-01T02:00:00+00:00"
+    end: "2027-01-01T02:30:00+00:00"
+    power_w: 2000
+```
+
+The schedule uses the configured EV sign. LAHEMS2 averages power over each
+fully covered 15-minute interval for up to 48 hours. Gaps remain unknown.
+Expired schedules and disconnected EVs supply no schedule intervals.
+A current-power setpoint or a calendar state alone supplies no future plan.
+The external controller continues to own the EV schedule.
+
 To uninstall, remove the LAHEMS2 integration entry in **Devices & services**
 and then remove the component through the Marketplace or remove the manually
 copied component folder and restart. Configuration is stored with the Home

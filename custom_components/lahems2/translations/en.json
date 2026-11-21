@@ -59,6 +59,14 @@
           "pv_power": "Measured solar power",
           "solar_forecast": "Solar forecast",
           "ev_power": "Measured EV power",
+          "ev_connected": "EV connection sensor",
+          "ev_soc": "EV state of charge sensor",
+          "ev_departure": "EV departure timestamp sensor",
+          "ev_required_soc_percent": "Required EV charge at departure (%)",
+          "grid_positive_export": "Positive grid power means export",
+          "ev_positive_discharge": "Positive EV power means discharge",
+          "import_limit_w": "Grid import limit (W)",
+          "export_limit_w": "Grid export limit (W)",
           "ev_schedule": "Scheduled EV power from the external controller",
           "add_battery": "Add a battery",
           "tariff_max_age_minutes": "Tariff freshness limit (minutes)"
@@ -161,6 +169,14 @@
           "pv_power": "Measured solar power",
           "solar_forecast": "Solar forecast",
           "ev_power": "Measured EV power",
+          "ev_connected": "EV connection sensor",
+          "ev_soc": "EV state of charge sensor",
+          "ev_departure": "EV departure timestamp sensor",
+          "ev_required_soc_percent": "Required EV charge at departure (%)",
+          "grid_positive_export": "Positive grid power means export",
+          "ev_positive_discharge": "Positive EV power means discharge",
+          "import_limit_w": "Grid import limit (W)",
+          "export_limit_w": "Grid export limit (W)",
           "ev_schedule": "Scheduled EV power from the external controller",
           "add_battery": "Add a battery",
           "tariff_max_age_minutes": "Tariff freshness limit (minutes)"
@@ -215,6 +231,9 @@
       },
       "actual": {
         "name": "Actual"
+      },
+      "energy_balance": {
+        "name": "Energy Balance"
       },
       "proposed": {
         "name": "Proposed"

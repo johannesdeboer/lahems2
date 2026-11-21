@@ -218,9 +218,15 @@ class _Wizard:
 
     async def async_step_energy(self, user_input=None):
         max_age = self._freshness_default(TARIFF_MAX_AGE)
+        limits = {"import_limit_w": None, "export_limit_w": None, "ev_required_soc_percent": 100}
+        signs = ("grid_positive_export", "ev_positive_discharge")
         fields = _role_fields(ENERGY_ROLES) | {
             vol.Required(TARIFF_MAX_AGE, default=max_age): _number(1),
             vol.Optional("add_battery", default=False): selector.BooleanSelector(),
+        } | {
+            vol.Optional(key): _number(0, maximum) for key, maximum in limits.items()
+        } | {
+            vol.Optional(key, default=False): selector.BooleanSelector() for key in signs
         }
         errors = {}
         if user_input is not None:
@@ -228,13 +234,23 @@ class _Wizard:
             max_age = numeric_value(user_input.get(TARIFF_MAX_AGE, max_age))
             if max_age is None or max_age < 1:
                 errors[TARIFF_MAX_AGE] = "invalid_number"
+            settings = {key: user_input.get(key, False) for key in signs}
+            for key, maximum in limits.items():
+                if key in user_input:
+                    value = numeric_value(user_input[key])
+                    if value is None or value < 0 or (maximum is not None and value > maximum):
+                        errors[key] = "invalid_number"
+                    else:
+                        settings[key] = value
             if not errors:
                 self._profile[BINDINGS].update(bindings)
-                self._profile[SETTINGS][TARIFF_MAX_AGE] = max_age
+                self._profile[SETTINGS].update(settings | {TARIFF_MAX_AGE: max_age})
                 if user_input.get("add_battery") or self._saved_batteries:
                     return await self.async_step_battery()
                 return await self.async_step_review()
         values = self._saved_values(ENERGY_ROLES) if self._previous else self._inputs.energy_suggestions()
+        previous_settings = self._previous.get(SETTINGS, {})
+        values.update({key: previous_settings[key] for key in (*limits, *signs) if key in previous_settings})
         return self._form("energy", fields, user_input if user_input is not None else values, errors)
 
     async def async_step_battery(self, user_input=None):

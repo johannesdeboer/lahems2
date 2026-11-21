@@ -57,6 +57,9 @@ ENERGY_ROLES = {
     "pv_power": Role("Measured solar power", device_class=POWER, multiple=True),
     "solar_forecast": Role("Solar forecast", numeric=False, multiple=True),
     "ev_power": Role("Measured EV power", device_class=POWER),
+    "ev_connected": Role("EV connected", "binary_sensor", numeric=False),
+    "ev_soc": Role("EV state of charge"),
+    "ev_departure": Role("EV departure", device_class="timestamp", numeric=False),
     "ev_schedule": Role("Scheduled EV power", ("sensor", "calendar"), numeric=False),
 }
 BATTERY_ROLES = {

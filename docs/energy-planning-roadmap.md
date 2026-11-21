@@ -12,13 +12,9 @@ will compare schedules in Shadow Mode.
 | Stationary battery | Power, state of charge, configured capacity, reserve, charge and discharge limits, power sign and controller name | Battery manufacturer's energy management integration |
 | Bidirectional EV | Measured power and an optional generic schedule entity | V2G Liberty for a compatible bidirectional EV and charger |
 
-Select V2G Liberty's measured charger power for **Measured EV power** and
-its current scheduled charging power for **Scheduled EV power from the
-external controller**, if available. Upstream defaults are
-`sensor.charger_real_charging_power` and
-`sensor.current_scheduled_charging_power`. The latter represents the current
-setpoint. A future schedule adapter needs the timestamped series. Confirm
-the actual entity IDs and power sign with a known charge and discharge.
+Select V2G Liberty's measured charger power for **Measured EV power**.
+Its current scheduled power sensor reports one setpoint. A full plan requires
+a timestamped series via the [external schedule input](../README.md#read-energy-balance).
 
 ## Milestones
 
@@ -28,8 +24,8 @@ the actual entity IDs and power sign with a known charge and discharge.
    separately from PV and net grid power. Normalize power signs and timestamped
    inputs into 15-minute intervals. Add EV connection state, state of charge,
    departure deadline and required charge, plus battery limits and applicable
-   import/export constraints. Treat an unavailable or expired schedule as
-   unknown. Use the external EV plan as a constraint when V2G Liberty owns it.
+   import/export constraints. LAHEMS2 exposes valid external EV quarters
+   as fixed inputs for the joint optimiser in milestone 3.
 3. **Joint optimisation in Shadow Mode.** Compare the baseline and proposed
    schedules for heating, stationary battery charge/discharge, and EV
    charge/discharge when the vehicle is connected and available. Use import and

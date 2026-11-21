@@ -26,6 +26,8 @@ jobs:
             README.md
             docs/shadow-mode-card.yaml
             docs/energy-planning-roadmap.md
+            docs/v2g-liberty-schedule.md
+            docs/v2g-liberty-v0.9.0-schedule-export.patch
             !custom_components/**/__pycache__/**
           if-no-files-found: error
 

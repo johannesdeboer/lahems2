@@ -283,19 +283,24 @@ async def test_energy_balance_and_external_schedule(hass, household):
     from homeassistant.util.dt import utcnow
 
     now = utcnow()
-    start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
-    end = start + timedelta(minutes=15)
+    quarter = timedelta(minutes=15)
+    current_quarter = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+    start = current_quarter + quarter
+    end = start + quarter
     hass.states.async_set(GRID, "-1", {"device_class": "power", "unit_of_measurement": "kW"})
-    hass.states.async_set("sensor.ev_power", "1500", {"device_class": "power", "unit_of_measurement": "W"})
+    hass.states.async_set("sensor.ev_power", "-1500", {"device_class": "power", "unit_of_measurement": "W"})
+    change = start + timedelta(minutes=5)
     hass.states.async_set("sensor.ev_plan", "active", {"intervals": [
-        {"start": start.isoformat(), "end": end.isoformat(), "power_w": 1500},
+        {"start": start.isoformat(), "end": change.isoformat(), "power_w": -3000},
+        {"start": change.isoformat(), "end": end.isoformat(), "power_w": 1500},
+        {"start": end.isoformat(), "end": (end + quarter).isoformat(), "power_w": -1500},
+        {"start": (end + quarter).isoformat(), "end": (end + 2 * quarter).isoformat(), "power_w": 2000},
     ]})
     inputs = Inputs(hass)
     entry = MockConfigEntry(domain=DOMAIN, data={
         BINDINGS: {key: inputs.bind(entity) for key, entity in {
             "grid_meter": GRID, "ev_power": "sensor.ev_power", "ev_schedule": "sensor.ev_plan",
         }.items()},
-        SETTINGS: {"ev_positive_discharge": True},
     })
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -306,10 +311,20 @@ async def test_energy_balance_and_external_schedule(hass, household):
     assert attributes["ev_w"] == -1500
     assert attributes["pv_w"] is None
     assert attributes["unallocated_load_w"] == 500
-    assert attributes["external_ev_schedule"][0]["power_w"] == -1500
+    assert attributes["external_ev_schedule"] == [
+        {"start": start.isoformat(), "end": end.isoformat(), "power_w": 0},
+        {"start": end.isoformat(), "end": (end + quarter).isoformat(), "power_w": -1500},
+        {"start": (end + quarter).isoformat(), "end": (end + 2 * quarter).isoformat(), "power_w": 2000},
+    ]
+
+    hass.states.async_set("sensor.ev_plan", "unavailable", {"intervals": []})
+    await hass.async_block_till_done()
+    state = hass.states.get(entity_id)
+    assert state.state == "Unavailable"
+    assert state.attributes["external_ev_schedule"] == []
 
     hass.states.async_set("sensor.ev_plan", "active", {"intervals": [
-        {"start": (start - timedelta(minutes=15)).isoformat(), "end": start.isoformat(), "power_w": 1500},
+        {"start": (current_quarter - quarter).isoformat(), "end": current_quarter.isoformat(), "power_w": 1500},
     ]})
     await hass.async_block_till_done()
     state = hass.states.get(entity_id)

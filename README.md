@@ -120,7 +120,8 @@ The schedule uses the configured EV sign. LAHEMS2 averages power over each
 fully covered 15-minute interval for up to 48 hours. Gaps remain unknown.
 Expired schedules and disconnected EVs supply no schedule intervals.
 A current-power setpoint or a calendar state alone supplies no future plan.
-The external controller continues to own the EV schedule.
+The external controller continues to own the EV schedule. V2G Liberty 0.9.0
+can supply this format through the [accepted schedule export](docs/v2g-liberty-schedule.md).
 
 To uninstall, remove the LAHEMS2 integration entry in **Devices & services**
 and then remove the component through the Marketplace or remove the manually

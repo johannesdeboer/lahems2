@@ -15,6 +15,8 @@ will compare schedules in Shadow Mode.
 Select V2G Liberty's measured charger power for **Measured EV power**.
 Its current scheduled power sensor reports one setpoint. A full plan requires
 a timestamped series via the [external schedule input](../README.md#read-energy-balance).
+The [V2G Liberty schedule export](v2g-liberty-schedule.md) publishes that series
+once V2G Liberty has accepted the plan.
 
 ## Milestones
 

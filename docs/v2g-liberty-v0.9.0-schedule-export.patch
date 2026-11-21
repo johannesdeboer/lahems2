@@ -1,0 +1,89 @@
+diff --git a/v2g-liberty/rootfs/root/appdaemon/apps/v2g_liberty/main_app.py b/v2g-liberty/rootfs/root/appdaemon/apps/v2g_liberty/main_app.py
+--- a/v2g-liberty/rootfs/root/appdaemon/apps/v2g_liberty/main_app.py
++++ b/v2g-liberty/rootfs/root/appdaemon/apps/v2g_liberty/main_app.py
+@@ -5,7 +5,7 @@
+ from itertools import accumulate
+ import math
+ from typing import List, Optional
+-from datetime import datetime, timedelta
++from datetime import datetime, timedelta, timezone
+ import isodate
+ from appdaemon.plugins.hass.hassapi import Hass
+ from .util.conversion_util import convert_mw_to_percentage_points
+@@ -50,6 +50,8 @@
+     The EVSE client does keep EVSE data up to date for presentation in the UI.
+     """
+ 
++    EV_SCHEDULE_ENTITY = "sensor.v2g_liberty_accepted_ev_schedule"
++
+     # CONSTANTS
+     # Wait time before notifying the user(s) if the car is still connected during a calendar event
+     MAX_EVENT_WAIT_TO_DISCONNECT: timedelta
+@@ -125,9 +127,11 @@
+         self.notifier = notifier
+         self.event_bus = event_bus
+         self.__log = get_class_method_logger(module_name="main_app")
++        self._ev_schedule_export_lock = asyncio.Lock()
+ 
+     async def initialize(self):
+         self.__log("Initializing V2Gliberty")
++        await self.__publish_ev_schedule([])
+ 
+         # If this variable is None it means the current SoC is below the max-soc.
+         self.back_to_max_soc = None
+@@ -1094,6 +1098,7 @@
+             return
+ 
+         self.discharge_refused_reason = reason
++        await self.__publish_ev_schedule([])
+         await self.hass.set_state(self.DISCHARGE_REFUSED_ENTITY, state=reason)
+ 
+         # Both prognoses assume the discharging that is being refused, so
+@@ -1684,12 +1689,30 @@
+         async with self.scheduling_timers_lock:
+             await self.__cancel_charging_timers_unlocked()
+ 
++    async def __publish_ev_schedule(self, intervals: list[dict]):
++        """Export the accepted setpoints without participating in charger control."""
++        async with self._ev_schedule_export_lock:
++            if getattr(self, "discharge_refused_reason", None) is not None:
++                intervals = []
++            try:
++                await self.hass.set_state(
++                    self.EV_SCHEDULE_ENTITY,
++                    state="active" if intervals else "unavailable",
++                    attributes={
++                        "friendly_name": "V2G Liberty accepted EV schedule",
++                        "intervals": intervals,
++                    },
++                )
++            except Exception:
++                self.__log("Could not publish the accepted EV schedule.", level="WARNING")
++
+     async def __cancel_charging_timers_unlocked(self):
+         """The cancel itself; the caller holds scheduling_timers_lock."""
+         count = len(self.scheduling_timer_handles)
+         for h in self.scheduling_timer_handles:
+             await cancel_timer_silent(self.hass, h)
+         self.scheduling_timer_handles = []
++        await self.__publish_ev_schedule([])
+         self.__log(f"Canceled all {count} charging timers.")
+ 
+     ######################################################################
+@@ -1845,6 +1868,16 @@
+             else:
+                 await self.__set_charge_power(closing)
+             self.scheduling_timer_handles = handles
++            intervals = [
++                {
++                    "start": t.astimezone(timezone.utc).isoformat(),
++                    "end": (t + resolution).astimezone(timezone.utc).isoformat(),
++                    "power_w": int(value * mw_to_w_factor),
++                }
++                for t, value in zip(timer_datetimes, values)
++                if t + resolution > now
++            ]
++            await self.__publish_ev_schedule(intervals)
+ 
+         exp_soc_values = list(
+             accumulate(

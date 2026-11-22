@@ -41,6 +41,11 @@ This makes the plan available for inspection before it is used in optimisation.
    export interval does not trigger stationary battery charging from the EV. Allow
    intentional transfers only when explicitly modelled and enabled, and account
    for conversion losses.
+
+   The [battery comparison](../README.md#compare-a-stationary-battery-plan-in-shadow-mode)
+   implements the first part of this milestone. The external EV schedule and
+   the forecast loads are fixed in both plans. Thermal scheduling and
+   explicitly modelled energy transfers are future work.
 4. **Optional execution.** Assign a single writer for each asset. Keep V2G
    Liberty as the EV charger writer while it owns the EV schedule. Apply stationary
    battery setpoints only through a verified control interface, with an explicit

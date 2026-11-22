@@ -184,7 +184,8 @@
           "grid": "Grid & tariffs",
           "solar": "Solar",
           "ev_source": "EV",
-          "batteries": "Home batteries"
+          "batteries": "Home batteries",
+          "shadow_planning": "Shadow planning"
         }
       },
       "energy_import": {
@@ -261,6 +262,22 @@
           "ev_required_soc_percent": "Required EV charge at departure (%)",
           "ev_positive_discharge": "Positive EV power means discharge",
           "ev_schedule": "Scheduled EV power from the external controller"
+        }
+      },
+      "shadow_planning": {
+        "title": "Shadow planning forecasts",
+        "description": "Configure future quarter-hour data. Set the PV forecast under Solar and the accepted external schedule under EV when applicable.",
+        "data": {
+          "demand_forecast": "Household demand forecast",
+          "import_tariff_forecast": "Import tariff forecast",
+          "export_tariff_forecast": "Export tariff forecast",
+          "planning_efficiency_percent": "Battery round-trip efficiency (%)"
+        },
+        "data_description": {
+          "demand_forecast": "Use a sensor with future intervals in watts. Include heating loads and exclude EV power, solar and battery power.",
+          "import_tariff_forecast": "Use a sensor with timestamped prices. When blank, LAHEMS2 checks the configured import price sensor for future intervals.",
+          "export_tariff_forecast": "Use a sensor with timestamped prices. When blank, LAHEMS2 checks the configured export price sensor for future intervals.",
+          "planning_efficiency_percent": "The same round-trip efficiency applies to all configured batteries in this comparison."
         }
       }
     },

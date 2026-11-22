@@ -1,6 +1,6 @@
 """Exercise the setup, Configure and Data Status with Home Assistant Core."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -279,6 +279,53 @@ async def test_storage_source_can_only_be_used_once(hass, household):
         assert entry.options[SETTINGS]["ev_energy_source"] == identity
         assert inputs.snapshot(entry.options)["energy"]["ev_w"] == -800
     await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_shadow_plan_reads_live_sources_and_stops_at_missing_quarter(hass, household):
+    start = datetime(2026, 11, 23, 14, tzinfo=UTC)
+    inputs = Inputs(hass)
+    demand, prices = "sensor.house_demand_forecast", "sensor.future_prices"
+    for entity_id, field, values, attrs in (
+        (demand, "power_w", [2500, 2500, 2500], {}),
+        (prices, "price_per_kwh", [0.1, 0.4], {"unit_of_measurement": "EUR/kWh"}),
+    ):
+        rows = [{
+            "start": (start + timedelta(minutes=15 * index)).isoformat(),
+            "end": (start + timedelta(minutes=15 * (index + 1))).isoformat(),
+            field: value,
+        } for index, value in enumerate(values)]
+        hass.states.async_set(entity_id, "ready", {**attrs, "intervals": rows})
+
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        BINDINGS: {
+            PRIMARY: inputs.bind(UNASSIGNED),
+            "thermostat": inputs.bind(THERMOSTAT),
+            "grid_meter": inputs.bind(GRID),
+            "demand_forecast": inputs.bind(demand),
+            "import_tariff_forecast": inputs.bind(prices),
+            "export_tariff_forecast": inputs.bind(prices),
+        },
+        SETTINGS: {"planning_efficiency_percent": 90},
+        BATTERIES: [{
+            BINDINGS: {"battery_power": inputs.bind("sensor.battery_power"), "battery_soc": inputs.bind("sensor.battery_state_of_charge")},
+            "capacity": 5, "charge_limit": 2000, "discharge_limit": 2000, "reserve": 5,
+            "power_sign": "positive_charge", "controller": "Test controller",
+        }],
+    })
+    entry.add_to_hass(hass)
+    hass.config.currency = "EUR"
+    with patch("custom_components.lahems2.sensor.utcnow", return_value=start):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_energy_balance")
+        plan = hass.states.get(entity_id).attributes["shadow_plan"]
+        assert plan["status"] == "Available"
+        assert len(plan["intervals"]) == 2
+        assert plan["proposed_cost"] < plan["baseline_cost"]
+        hass.states.async_set(prices, "unavailable")
+        await hass.async_block_till_done()
+        assert hass.states.get(entity_id).attributes["shadow_plan"]["status"] == "Waiting for forecasts"
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 

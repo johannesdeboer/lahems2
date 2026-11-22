@@ -40,13 +40,14 @@ const STYLES = `
     background: var(--card-background-color, #fff);
     border: 1px solid var(--divider-color, #d3dfda); border-radius: 12px;
   }
-  .schedule { margin-top: 12px; }
+  .schedule, .shadow-plan { margin-top: 12px; }
   dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 12px; }
   dt { color: var(--secondary-text-color, #465753); }
   dd { margin: 2px 0 0; font-size: 17px; font-weight: 600; }
   .schedule-head { display: flex; flex-wrap: wrap; align-items: start; gap: 8px 16px; justify-content: space-between; }
   select { font: inherit; color: inherit; background: inherit; border: 1px solid var(--divider-color, #b2bfba); border-radius: 6px; padding: 6px; }
   .schedule dl { margin: 14px 0; }
+  .shadow-plan dl { margin-block: 12px; }
   .schedule-chart { margin-top: 14px; }
   .chart-grid {
     direction: ltr; display: grid; grid-template-columns: auto minmax(0, 1fr);
@@ -130,8 +131,10 @@ class Lahems2Overview extends HTMLElement {
     scheduleHead.append(element("h2", "Accepted EV schedule"), this.horizon);
     this.schedule = element("div");
     schedule.append(scheduleHead, this.schedule);
+    this.shadowPlan = element("section", undefined, "shadow-plan");
+    this.shadowPlan.hidden = true;
     this.attention = element("section", undefined, "attention");
-    main.append(intro, cards, schedule, this.attention);
+    main.append(intro, cards, schedule, this.shadowPlan, this.attention);
     this.shadowRoot.append(style, header, main);
   }
 
@@ -174,6 +177,7 @@ class Lahems2Overview extends HTMLElement {
     });
     this.renderOverview();
     this.renderSchedule();
+    this.renderShadowPlan();
   }
 
   quantity(value, unit) {
@@ -341,6 +345,58 @@ class Lahems2Overview extends HTMLElement {
     chart.append(grid, legend, reading);
     this.schedule.append(chart);
     if (restoreFocus) plot.focus({preventScroll: true});
+  }
+
+  renderShadowPlan() {
+    const plan = this.sources.energy_balance?.attributes.shadow_plan;
+    this.shadowPlan.hidden = !plan;
+    if (!plan) return;
+    const key = JSON.stringify([this.formatKey, plan]);
+    if (key === this.shadowPlanKey) return;
+    this.shadowPlanKey = key;
+    this.shadowPlan.replaceChildren(
+      element("h2", "Battery plan comparison"),
+      element("p", plan.reason || plan.status, "detail"),
+    );
+    if (plan.baseline_cost == null) return;
+    const savings = plan.proposed_cost == null ? null : plan.baseline_cost - plan.proposed_cost;
+    this.shadowPlan.append(this.metrics([
+      ["Baseline cost", this.quantity(plan.baseline_cost, plan.currency)],
+      ["Proposed cost", this.quantity(plan.proposed_cost, plan.currency)],
+      ["Estimated savings", this.quantity(savings, plan.currency)],
+    ]));
+    const intervals = plan.intervals;
+    if (!intervals?.length) return;
+    this.shadowPlan.append(element(
+      "p",
+      `${this.quantity(intervals.length / 4, "h")} of forecast coverage · ${this.quantity(plan.round_trip_efficiency_percent, "%")} round-trip efficiency`,
+      "detail",
+    ));
+    const select = element("select");
+    select.setAttribute("aria-label", "Inspect a battery plan interval");
+    const details = element("div");
+    for (const interval of intervals) {
+      const option = element("option", this.clock.format(Date.parse(interval.start)));
+      option.value = interval.start;
+      select.append(option);
+    }
+    if (intervals.some((interval) => interval.start === this.inspectedPlanStart)) select.value = this.inspectedPlanStart;
+    const inspect = () => {
+      const interval = intervals[select.selectedIndex];
+      this.inspectedPlanStart = interval.start;
+      details.replaceChildren(this.metrics([
+        ["Baseline grid", this.flow(interval.baseline_grid_w, "Importing", "Exporting")],
+        ["Proposed grid", this.flow(interval.proposed_grid_w, "Importing", "Exporting")],
+        ["Fixed EV power", this.flow(interval.ev_power_w, "Charging", "Discharging")],
+        ...interval.battery_power_w.map((power, index) => [
+          `Home battery ${index + 1}`,
+          `${this.flow(power, "Charge", "Discharge")} · ${this.quantity(interval.battery_end_soc_percent[index], "%")} at end`,
+        ]),
+      ]));
+    };
+    select.addEventListener("change", inspect);
+    inspect();
+    this.shadowPlan.append(select, details);
   }
 }
 

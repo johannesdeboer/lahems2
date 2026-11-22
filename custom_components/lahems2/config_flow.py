@@ -20,6 +20,7 @@ from .const import (
     FRESHNESS_DEFAULTS,
     HEAT_ROLES,
     MODE,
+    PLAN_ROLES,
     PRIMARY,
     RELAY,
     ROLES,
@@ -417,7 +418,7 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
         self._sources = await Sources.load(self._inputs)
         return self.async_show_menu(
             step_id="init",
-            menu_options=["energy_import", "area", "heating_source", "grid", "solar", "ev_source", "batteries"],
+            menu_options=["energy_import", "area", "heating_source", "grid", "solar", "ev_source", "batteries", "shadow_planning"],
         )
 
     def _choice(self, options, *, multiple=False):
@@ -525,6 +526,7 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
                 "import_limit_w": (0, None),
                 "export_limit_w": (0, None),
                 "ev_required_soc_percent": (0, 100),
+                "planning_efficiency_percent": (1, 100),
             }
             for key, (minimum, maximum) in number_limits.items():
                 if key in values:
@@ -571,6 +573,11 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
 
     async def async_step_solar(self, user_input=None):
         return self._edit_section("solar", SOLAR_ROLES, (), {}, user_input)
+
+    async def async_step_shadow_planning(self, user_input=None):
+        return self._edit_section("shadow_planning", PLAN_ROLES, ("planning_efficiency_percent",), {
+            vol.Required("planning_efficiency_percent", default=90): _number(1, 100),
+        }, user_input)
 
     async def async_step_ev_source(self, user_input=None):
         storage = {key: self._sources.storage_label(key, row) for key, row in self._sources.storage().items()}

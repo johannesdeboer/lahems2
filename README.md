@@ -167,6 +167,39 @@ Assistant entry and survives integration updates.
 
 ## Energy planning roadmap
 
+### Compare a stationary battery plan in Shadow Mode
+
+In **Configure → Shadow planning**, select a household demand forecast and
+future import and export prices. LAHEMS2 can reuse the linked tariff sensors
+when their attributes already contain the future prices. Select PV forecasts
+under **Solar** if you have configured solar production. Each forecast sensor
+provides a list in its `intervals` attribute:
+
+```yaml
+intervals:
+  - start: "2027-01-01T02:00:00+00:00"
+    end: "2027-01-01T02:15:00+00:00"
+    power_w: 2000
+```
+
+Use average watts for demand and PV. For prices, replace `power_w` with
+`price_per_kwh` and give the sensor a unit such as `EUR/kWh`. Demand includes
+heating and excludes separate EV, solar and battery flows. If the EV is
+connected, the accepted external schedule is fixed in both plans. LAHEMS2
+compares contiguous complete quarters starting with the next full quarter, up
+to 24 hours, and stops at the first missing input.
+
+The sidebar shows the idle-battery baseline and estimated cost of the proposal.
+Select a quarter to see its net grid power, battery targets and projected
+state of charge. The proposal respects battery power limits, reserve and
+configured grid limits. It models charge/discharge losses using a configurable
+round-trip efficiency (90% by default) and preserves starting battery energy
+at the end. Battery charge during EV export is limited to independent PV
+surplus. Batteries are planned in configured order with discrete energy
+levels. This comparison keeps the demand forecast fixed, including heating.
+LAHEMS2 only reads the Home Assistant entities and excludes proposed intervals
+from Recorder attributes.
+
 See the [energy planning roadmap](docs/energy-planning-roadmap.md) for
 stationary battery optimisation, bidirectional EVs and external controllers.
 

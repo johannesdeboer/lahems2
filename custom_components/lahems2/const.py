@@ -66,4 +66,9 @@ BATTERY_ROLES = {
     "battery_power": Role("Measured power", device_class=POWER, required=True),
     "battery_soc": Role("State of charge", required=True),
 }
-ROLES = ZONE_ROLES | HEAT_ROLES | ENERGY_ROLES
+PLAN_ROLES = {
+    "demand_forecast": Role("Household demand forecast", numeric=False),
+    "import_tariff_forecast": Role("Import tariff forecast", numeric=False),
+    "export_tariff_forecast": Role("Export tariff forecast", numeric=False),
+}
+ROLES = ZONE_ROLES | HEAT_ROLES | ENERGY_ROLES | PLAN_ROLES

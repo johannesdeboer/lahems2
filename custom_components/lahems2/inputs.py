@@ -23,8 +23,9 @@ from .const import (
     SETTINGS,
     Role,
 )
-from .energy import energy_snapshot
+from .energy import QUARTER, energy_snapshot
 from .model import active_temperature, numeric_value
+from .shadow_plan import Battery, QuarterInput, forecast
 
 _INDOOR = {"indoor", "room", "living", "bedroom", "kitchen", "hall", "ambient", "lounge"}
 _EQUIPMENT = {
@@ -271,6 +272,67 @@ class Inputs:
                 else "Backup" if active else None
             ),
         }
+
+    def planning_inputs(self, profile, snapshot, now, currency):
+        """Build an immutable comparison request from current Home Assistant states."""
+        bindings = profile.get(BINDINGS, {})
+        if "demand_forecast" not in bindings:
+            return "Not configured", "Choose forecast sources in Configure → Shadow planning.", None
+
+        def read(binding, field, *, power=False):
+            entity_id = self.entity_id(binding)
+            entry = self.entities.async_get(entity_id)
+            if binding.get("registry_id") and (not entry or entry.id != binding["registry_id"]):
+                return {}
+            candidate = self.candidate(entity_id)
+            state = self.hass.states.get(entity_id)
+            if not state or not candidate or candidate.disabled or state.state in {"unknown", "unavailable"}:
+                return {}
+            if not power:
+                units = {f"{currency}/kWh"} | ({"€/kWh"} if currency == "EUR" else set())
+                if state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) not in units:
+                    return {}
+            return forecast(state.attributes.get("intervals"), field, nonnegative=power)
+
+        demand = read(bindings["demand_forecast"], "power_w", power=True)
+        tariffs = []
+        for key in ("import", "export"):
+            binding = bindings.get(f"{key}_tariff_forecast") or bindings.get(f"{key}_price")
+            tariffs.append(read(binding, "price_per_kwh") if binding else {})
+        solar_sources = bindings.get("solar_forecast", [])
+        if bindings.get("pv_power") and not solar_sources:
+            return "Waiting for forecasts", "Select a PV forecast for the configured solar production.", None
+        solar = [read(binding, "power_w", power=True) for binding in solar_sources]
+
+        energy = snapshot["energy"]
+        batteries = tuple(Battery.from_readings(battery) for battery in energy["batteries"])
+        if not batteries or None in batteries:
+            return "Waiting for battery inputs", "Stationary batteries need confirmed limits and a usable charge level at or above reserve.", None
+        has_ev = any(key in bindings for key in ("ev_power", "ev_connected", "ev_schedule"))
+        if has_ev and energy["ev_connected"] is None:
+            return "Waiting for EV connection", "The EV connection sensor needs to be available for planning.", None
+        needs_ev = has_ev and energy["ev_connected"] is True
+        ev = forecast(energy["external_ev_schedule"], "power_w") if needs_ev else {}
+
+        start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+        if start < now:
+            start += QUARTER
+        slots = []
+        for index in range(96):
+            quarter = start + index * QUARTER
+            load = demand.get(quarter)
+            prices = [series.get(quarter) for series in tariffs]
+            pv = [series.get(quarter) for series in solar]
+            ev_w = ev.get(quarter) if needs_ev else 0
+            if None in [load, *prices, *pv, ev_w]:
+                break
+            slots.append(QuarterInput(quarter, load, sum(pv), ev_w, *prices))
+        if not slots:
+            return "Waiting for forecasts", "The next full quarter needs demand and buy/sell prices, plus PV or an accepted EV schedule when applicable.", None
+        efficiency = profile.get(SETTINGS, {}).get("planning_efficiency_percent", 90) / 100
+        return "Calculating", "Comparing future quarters in Shadow Mode.", (
+            tuple(slots), batteries, currency, efficiency, energy["import_limit_w"], energy["export_limit_w"],
+        )
 
 
 def matches_role(candidate: Candidate, role: Role) -> bool:

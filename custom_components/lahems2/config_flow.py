@@ -642,4 +642,6 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
         return self._form("battery_source", fields, user_input, errors)
 
     def _finish(self):
+        if self._previous != (self.config_entry.options or self.config_entry.data):
+            return self.async_abort(reason="settings_changed")
         return self.async_create_entry(title="", data=self._profile)

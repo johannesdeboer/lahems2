@@ -276,6 +276,9 @@
       "duplicate_battery": "This source is already linked to another battery.",
       "storage_used_for_ev": "This source is already used by the EV. Choose another source.",
       "storage_used_for_battery": "This EV source is configured as a home battery. Remove that battery from Home batteries before saving the EV."
+    },
+    "abort": {
+      "settings_changed": "LAHEMS2 settings changed while this screen was open. Open Configure again to continue."
     }
   },
   "selector": {

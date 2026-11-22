@@ -211,11 +211,15 @@ async def test_energy_import_keeps_saved_sections_and_reads_live_values(hass, ho
     }
     with patch("custom_components.lahems2.sources.async_get_manager", return_value=SimpleNamespace(data=prefs)):
         manager = hass.config_entries.options
+        stale = await choose(manager, entry, "grid")
         result = await choose(manager, entry, "energy_import")
         assert old_grid in result["description_placeholders"]["changes"]
         assert f"{solar[0]} (500 W)" in result["description_placeholders"]["changes"]
         assert "water" not in result["description_placeholders"]["changes"]
         result = await submit(manager, result, "energy_import", {"sections": ["grid", "solar"]})
+        stale = await submit(manager, stale, "grid", {"grid_meter": old_grid})
+        assert stale["type"] == FlowResultType.ABORT
+        assert stale["reason"] == "settings_changed"
     assert result["type"] == FlowResultType.CREATE_ENTRY
     profile = entry.options
     assert profile[BINDINGS][PRIMARY] == entry.data[BINDINGS][PRIMARY]

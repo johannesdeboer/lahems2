@@ -4,7 +4,7 @@
   "categories": ["energy"],
   "codeowners": ["@johannesdeboer"],
   "config_flow": true,
-  "dependencies": ["panel_custom"],
+  "dependencies": ["frontend", "http", "panel_custom"],
   "documentation": "https://github.com/johannesdeboer/lahems2#readme",
   "integration_type": "service",
   "iot_class": "local_push",

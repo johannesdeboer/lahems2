@@ -7,12 +7,14 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util.dt import utcnow
 
-from .const import AREA, MODE, ROLES, SETTINGS
+from .const import AREA, DOMAIN, MODE, ROLES, SETTINGS
+from .energy import watts
 from .inputs import Inputs
 from .planning import propose
 from .shadow_plan import compare
@@ -26,12 +28,15 @@ async def async_setup_entry(
     """Add the read-only entities for this configuration entry."""
     coordinator = SnapshotCoordinator(hass, entry)
     coordinator.start()
-    async_add_entities([
+    entities = [
         DataStatus(coordinator, entry),
         Actual(coordinator, entry),
         Proposed(coordinator, entry),
         EnergyBalance(coordinator, entry),
-    ])
+    ]
+    if coordinator.profile.get(SETTINGS, {}).get("pellet_enabled"):
+        entities.append(PelletStove(coordinator, entry))
+    async_add_entities(entities)
 
 
 class SnapshotCoordinator(DataUpdateCoordinator[dict]):
@@ -161,7 +166,7 @@ class Actual(SnapshotSensor):
 
     _attr_translation_key = "actual"
     _attr_icon = "mdi:home-thermometer-outline"
-    _unrecorded_attributes = frozenset({"inputs"})
+    _unrecorded_attributes = frozenset({"inputs", "pellet_stove"})
 
     @property
     def native_value(self) -> str:
@@ -172,17 +177,43 @@ class Actual(SnapshotSensor):
         snapshot = self.coordinator.data["snapshot"]
         indoor = snapshot["active_indoor_temperature"]
         thermostat = snapshot["roles"][ROLES["thermostat"].label]
+        heat_pump = snapshot["roles"][ROLES["heat_pump_power"].label]
         return {
             "indoor_temperature": indoor["reading"] if indoor else None,
             "indoor_temperature_unit": indoor["unit"] if indoor else None,
             "indoor_source": snapshot["active_indoor_source"],
             "comfort_target": thermostat.get("comfort_target"),
             "comfort_target_unit": thermostat.get("comfort_target_unit"),
+            "heat_pump_power_w": watts(heat_pump["reading"], heat_pump["unit"]) if heat_pump["usable"] else None,
+            "pellet_stove": snapshot["pellet_stove"],
             "inputs": {
                 label: {key: reading[key] for key in ("reading", "unit", "status", "usable")}
                 for label, reading in snapshot["roles"].items() if reading["entity_id"]
             },
         }
+
+
+class PelletStove(SnapshotSensor):
+    """Expose the monitored stove as its own Home Assistant device."""
+
+    _attr_translation_key = "pellet_stove"
+    _attr_icon = "mdi:fireplace"
+    _unrecorded_attributes = frozenset({"stock_kg", "rooms", "heat_request"})
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry)
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_pellet_stove")},
+            name="Pellet stove",
+        )
+
+    @property
+    def native_value(self):
+        return self.coordinator.data["snapshot"]["pellet_stove"]["status"]
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.data["snapshot"]["pellet_stove"]
 
 
 class Proposed(SnapshotSensor):

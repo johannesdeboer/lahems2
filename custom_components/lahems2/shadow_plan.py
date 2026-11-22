@@ -2,7 +2,7 @@
 
 from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from math import sqrt
 
@@ -37,6 +37,7 @@ class QuarterInput:
     ev_w: float
     import_price: float
     export_price: float
+    heat_pump_w: float | None = None
 
     @property
     def grid_w(self):
@@ -129,19 +130,70 @@ def _battery_plan(battery, slots, committed, efficiency, import_limit, export_li
     return list(reversed(path))
 
 
-def compare(slots, batteries, currency, round_trip_efficiency=0.9, import_limit=None, export_limit=None):
-    """Evaluate the baseline and generate a constrained stationary battery proposal."""
-    import_limit = float("inf") if import_limit is None else import_limit
-    export_limit = float("inf") if export_limit is None else export_limit
+def _dispatch(slots, batteries, efficiency, import_limit, export_limit):
     committed = [0.0] * len(slots)
     paths = []
     for battery in batteries:
-        path = _battery_plan(battery, slots, committed, sqrt(round_trip_efficiency), import_limit, export_limit)
+        path = _battery_plan(battery, slots, committed, efficiency, import_limit, export_limit)
         paths.append(path)
         committed = [other + point[0] for other, point in zip(committed, path, strict=True)]
+    grid = [slot.grid_w + power for slot, power in zip(slots, committed, strict=True)]
+    return paths, grid
+
+
+def _fuel_choices(slots, grid, pellet):
+    """Use limited fuel first where local heat has the highest estimated value."""
+    opportunities = []
+    for index, (slot, net) in enumerate(zip(slots, grid, strict=True)):
+        if not slot.heat_pump_w:
+            continue
+        displaced = min(slot.heat_pump_w, pellet.max_output_kw * 1000 / pellet.heat_pump_cop)
+        kg = displaced * pellet.heat_pump_cop / (_W_PER_QUARTER_KWH * pellet.useful_heat_kwh_per_kg)
+        savings = _cost(net, slot) - _cost(net - displaced, slot) - kg * pellet.price_per_kg
+        if savings > _EPSILON:
+            opportunities.append((savings / kg, index, displaced, kg))
+
+    choices = {}
+    remaining = pellet.stock_kg
+    for _, index, watts, kg in sorted(opportunities, key=lambda row: (-row[0], row[1])):
+        if kg <= remaining:
+            choices[index] = watts, kg
+            remaining -= kg
+    return choices
+
+
+def compare(slots, batteries, currency, round_trip_efficiency=0.9, import_limit=None, export_limit=None, pellet=None):
+    """Compare fixed heat-pump demand with proposed dispatch and optional local pellet heat."""
+    import_limit = float("inf") if import_limit is None else import_limit
+    export_limit = float("inf") if export_limit is None else export_limit
+    efficiency = sqrt(round_trip_efficiency)
+    paths, grid = _dispatch(slots, batteries, efficiency, import_limit, export_limit)
+
+    def feasible(grid_power):
+        return all(_limit_excess(net, import_limit, export_limit) <= _EPSILON for net in grid_power)
+
+    def grid_cost(grid_power):
+        return sum(_cost(net, slot) for net, slot in zip(grid_power, slots, strict=True))
+
+    fuel = {}
+    if pellet and (choices := _fuel_choices(slots, grid, pellet)):
+        heated = [
+            replace(slot, demand_w=slot.demand_w - choices[index][0]) if index in choices else slot
+            for index, slot in enumerate(slots)
+        ]
+        combined_paths, combined_grid = _dispatch(heated, batteries, efficiency, import_limit, export_limit)
+        fuel_cost = sum(kg for _, kg in choices.values()) * pellet.price_per_kg
+        if feasible(combined_grid) and (
+            not feasible(grid) or grid_cost(combined_grid) + fuel_cost < grid_cost(grid) - _EPSILON
+        ):
+            paths, grid, fuel = combined_paths, combined_grid, choices
+
+    remaining = pellet.stock_kg if pellet else None
     rows = []
-    for index, (slot, power) in enumerate(zip(slots, committed, strict=True)):
-        proposed = slot.grid_w + power
+    for index, (slot, proposed) in enumerate(zip(slots, grid, strict=True)):
+        offset, kg = fuel.get(index, (0, 0))
+        if remaining is not None:
+            remaining = max(0, remaining - kg)
         rows.append({
             "start": slot.start.isoformat(), "end": (slot.start + QUARTER).isoformat(),
             "ev_power_w": slot.ev_w, "baseline_grid_w": slot.grid_w, "proposed_grid_w": round(proposed, 3),
@@ -149,18 +201,23 @@ def compare(slots, batteries, currency, round_trip_efficiency=0.9, import_limit=
             "battery_end_soc_percent": [round(path[index][1], 3) for path in paths],
             "import_price": slot.import_price, "export_price": slot.export_price,
             "baseline_cost": _cost(slot.grid_w, slot), "proposed_cost": _cost(proposed, slot),
+            "heat_pump_baseline_w": slot.heat_pump_w,
+            "heat_pump_proposed_w": None if slot.heat_pump_w is None else round(slot.heat_pump_w - offset, 3),
+            "pellet_used_kg": round(kg, 4),
+            "pellet_remaining_kg": round(remaining, 4) if remaining is not None else None,
         })
-    feasible = all(_limit_excess(slot.grid_w + power, import_limit, export_limit) <= _EPSILON
-                   for slot, power in zip(slots, committed, strict=True))
+    valid = feasible(grid)
+    pellet_cost = sum(kg for _, kg in fuel.values()) * pellet.price_per_kg if pellet else 0
     return {
-        "status": "Available" if feasible else "No feasible proposal found",
+        "status": "Available" if valid else "No feasible proposal found",
         "reason": (
             "EV power is fixed. Proposed batteries preserve their starting charge and cannot charge from EV export."
-            if feasible else "The proposed battery schedules could not meet the configured grid limits."
+            if valid else "The proposed schedules could not meet the configured grid limits."
         ),
         "currency": currency,
         "round_trip_efficiency_percent": round_trip_efficiency * 100,
         "baseline_cost": round(sum(row["baseline_cost"] for row in rows), 4),
-        "proposed_cost": round(sum(row["proposed_cost"] for row in rows), 4) if feasible else None,
-        "intervals": rows if feasible else [],
+        "proposed_cost": round(grid_cost(grid) + pellet_cost, 4) if valid else None,
+        "pellet_cost": round(pellet_cost, 4) if valid and pellet else None,
+        "intervals": rows if valid else [],
     }

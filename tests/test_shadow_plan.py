@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from custom_components.lahems2.energy import QUARTER
+from custom_components.lahems2.pellet import Pellet, stock_kg
 from custom_components.lahems2.shadow_plan import Battery, QuarterInput, compare, forecast
 
 START = datetime(2026, 11, 23, 0, 0, tzinfo=UTC)
@@ -49,3 +50,30 @@ def test_forecast_keeps_negative_prices_and_rejects_ambiguous_or_unaligned_rows(
     assert forecast([row, row], "price_per_kwh") == {START: None}
     assert forecast([row], "price_per_kwh", nonnegative=True) == {START: None}
     assert not forecast([{**row, "end": (START + 2 * QUARTER).isoformat()}], "price_per_kwh")
+
+
+def test_local_heat_uses_stock_on_most_valuable_quarter_then_returns_to_heat_pump():
+    slots = [
+        QuarterInput(START, 3500, 0, 0, 0.10, 0.05, heat_pump_w=2500),
+        QuarterInput(START + QUARTER, 3500, 0, -500, 0.80, 0.35, heat_pump_w=2500),
+        QuarterInput(START + 2 * QUARTER, 3500, 0, 0, 0.60, 0.30, heat_pump_w=2500),
+        QuarterInput(START + 3 * QUARTER, 3500, 0, 0, 0.90, 0.35),
+    ]
+    plan = compare(slots, [], "EUR", pellet=Pellet(0.25, 0.5, 4, 4, 2))
+    rows = plan["intervals"]
+    assert [row["pellet_used_kg"] for row in rows] == [0, 0.25, 0, 0]
+    assert [row["pellet_remaining_kg"] for row in rows] == [0.25, 0, 0, 0]
+    assert rows[1]["ev_power_w"] == -500
+    assert rows[1]["heat_pump_proposed_w"] == 500
+    assert rows[2]["heat_pump_proposed_w"] == 2500
+    assert rows[3]["heat_pump_proposed_w"] is None
+    assert plan["pellet_cost"] == 0.125
+    assert plan["baseline_cost"] - plan["proposed_cost"] == pytest.approx(0.275)
+
+
+def test_hopper_percent_requires_capacity_and_preserves_confirmed_zero():
+    reading = {"usable": True, "reading": "25", "unit": "%"}
+    assert stock_kg(reading, 12) == 3
+    assert stock_kg(reading, None) is None
+    assert stock_kg({**reading, "reading": "0"}, 12) == 0
+    assert stock_kg({**reading, "usable": False}, 12) is None

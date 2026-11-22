@@ -20,6 +20,8 @@ from .const import (
     FRESHNESS_DEFAULTS,
     HEAT_ROLES,
     MODE,
+    PELLET_NUMBERS,
+    PELLET_ROLES,
     PLAN_ROLES,
     PRIMARY,
     RELAY,
@@ -418,7 +420,7 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
         self._sources = await Sources.load(self._inputs)
         return self.async_show_menu(
             step_id="init",
-            menu_options=["energy_import", "area", "heating_source", "grid", "solar", "ev_source", "batteries", "shadow_planning"],
+            menu_options=["energy_import", "area", "heating_source", "pellet_stove", "grid", "solar", "ev_source", "batteries", "shadow_planning"],
         )
 
     def _choice(self, options, *, multiple=False):
@@ -527,6 +529,7 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
                 "export_limit_w": (0, None),
                 "ev_required_soc_percent": (0, 100),
                 "planning_efficiency_percent": (1, 100),
+                **{key: (minimum, None) for key, minimum in PELLET_NUMBERS.items()},
             }
             for key, (minimum, maximum) in number_limits.items():
                 if key in values:
@@ -578,6 +581,17 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
         return self._edit_section("shadow_planning", PLAN_ROLES, ("planning_efficiency_percent",), {
             vol.Required("planning_efficiency_percent", default=90): _number(1, 100),
         }, user_input)
+
+    async def async_step_pellet_stove(self, user_input=None):
+        fields = {
+            vol.Optional("pellet_enabled", default=True): selector.BooleanSelector(),
+            vol.Optional("pellet_serves_forecast_load", default=False): selector.BooleanSelector(),
+            **{vol.Optional(key): _number(minimum) for key, minimum in PELLET_NUMBERS.items()},
+        }
+        return self._edit_section(
+            "pellet_stove", PELLET_ROLES | {RELAY: HEAT_ROLES[RELAY]},
+            ("pellet_enabled", "pellet_serves_forecast_load", *PELLET_NUMBERS), fields, user_input,
+        )
 
     async def async_step_ev_source(self, user_input=None):
         storage = {key: self._sources.storage_label(key, row) for key, row in self._sources.storage().items()}

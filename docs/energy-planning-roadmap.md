@@ -43,9 +43,10 @@ This makes the plan available for inspection before it is used in optimisation.
    for conversion losses.
 
    The [battery comparison](../README.md#compare-a-stationary-battery-plan-in-shadow-mode)
-   implements the first part of this milestone. The external EV schedule and
-   the forecast loads are fixed in both plans. Thermal scheduling and
-   explicitly modelled energy transfers are future work.
+   implements the first part of this milestone. The [local heat comparison](../README.md#include-the-heat-pump-and-pellet-stove-in-shadow-mode)
+   adds optional pellet substitution within its available fuel and useful heat
+   limits. The external EV schedule stays fixed. Predictive room temperature,
+   heat-pump shifting and explicitly modelled energy transfers are future work.
 4. **Optional execution.** Assign a single writer for each asset. Keep V2G
    Liberty as the EV charger writer while it owns the EV schedule. Apply stationary
    battery setpoints only through a verified control interface, with an explicit

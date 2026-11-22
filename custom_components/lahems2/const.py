@@ -68,7 +68,20 @@ BATTERY_ROLES = {
 }
 PLAN_ROLES = {
     "demand_forecast": Role("Household demand forecast", numeric=False),
+    "heat_pump_demand_forecast": Role("Heat pump electricity forecast", numeric=False),
     "import_tariff_forecast": Role("Import tariff forecast", numeric=False),
     "export_tariff_forecast": Role("Export tariff forecast", numeric=False),
 }
-ROLES = ZONE_ROLES | HEAT_ROLES | ENERGY_ROLES | PLAN_ROLES
+PELLET_ROLES = {
+    "pellet_room_temperatures": Role("Pellet stove room temperature", device_class=TEMPERATURE, multiple=True, freshness_setting=TEMPERATURE_MAX_AGE),
+    "pellet_room_thermostats": Role("Pellet stove room thermostat", "climate", multiple=True, numeric=False),
+    "pellet_stock": Role("Pellet stock", ("sensor", "input_number")),
+}
+PELLET_NUMBERS = {
+    "pellet_hopper_capacity_kg": 0.01,
+    "pellet_price_per_kg": 0,
+    "pellet_useful_heat_kwh_per_kg": 0.01,
+    "pellet_max_output_kw": 0.01,
+    "heat_pump_cop": 0.01,
+}
+ROLES = ZONE_ROLES | HEAT_ROLES | ENERGY_ROLES | PLAN_ROLES | PELLET_ROLES

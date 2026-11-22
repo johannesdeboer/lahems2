@@ -181,6 +181,7 @@
           "energy_import": "Use Home Assistant Energy sources",
           "area": "Temperature & comfort",
           "heating_source": "Heating",
+          "pellet_stove": "Pellet stove",
           "grid": "Grid & tariffs",
           "solar": "Solar",
           "ev_source": "EV",
@@ -271,13 +272,38 @@
           "demand_forecast": "Household demand forecast",
           "import_tariff_forecast": "Import tariff forecast",
           "export_tariff_forecast": "Export tariff forecast",
-          "planning_efficiency_percent": "Battery round-trip efficiency (%)"
+          "planning_efficiency_percent": "Battery round-trip efficiency (%)",
+          "heat_pump_demand_forecast": "Heat pump electrical demand forecast"
         },
         "data_description": {
           "demand_forecast": "Use a sensor with future intervals in watts. Include heating loads and exclude EV power, solar and battery power.",
           "import_tariff_forecast": "Use a sensor with timestamped prices. When blank, LAHEMS2 checks the configured import price sensor for future intervals.",
           "export_tariff_forecast": "Use a sensor with timestamped prices. When blank, LAHEMS2 checks the configured export price sensor for future intervals.",
-          "planning_efficiency_percent": "The same round-trip efficiency applies to all configured batteries in this comparison."
+          "planning_efficiency_percent": "The same round-trip efficiency applies to all configured batteries in this comparison.",
+          "heat_pump_demand_forecast": "Use timestamped power in watts already included in the household forecast. For pellet replacement, include only the heat pump load that serves spaces the stove can heat."
+        }
+      },
+      "pellet_stove": {
+        "title": "Pellet stove",
+        "description": "Link the thermostats and temperature sensors in the rooms heated by the stove. Stock monitoring works without a heat-request switch.",
+        "data": {
+          "pellet_enabled": "Enable pellet stove monitoring",
+          "pellet_room_temperatures": "Room temperature sensors",
+          "pellet_room_thermostats": "Room thermostats",
+          "pellet_stock": "Hopper level or stock estimate",
+          "pellet_hopper_capacity_kg": "Full hopper capacity (kg)",
+          "pellet_heat_request": "Heat request switch (optional, read-only)",
+          "pellet_serves_forecast_load": "Allow the stove to replace the configured heat pump forecast load",
+          "pellet_price_per_kg": "Pellet price per kg (Home Assistant currency)",
+          "pellet_useful_heat_kwh_per_kg": "Useful heat delivered per kg (kWh/kg)",
+          "pellet_max_output_kw": "Available thermal output (kW)",
+          "heat_pump_cop": "Assumed heat pump COP"
+        },
+        "data_description": {
+          "pellet_stock": "Choose a sensor or Number helper in kg or percent. For percent, also enter the full hopper capacity.",
+          "pellet_serves_forecast_load": "Enable only if the selected Heat pump electrical demand forecast describes zones the stove can actually heat.",
+          "pellet_useful_heat_kwh_per_kg": "Enter the useful heat after stove losses. Use the fuel specification and stove efficiency.",
+          "heat_pump_cop": "Heat delivered divided by electricity used. Use a representative value for this forecast."
         }
       }
     },
@@ -319,6 +345,9 @@
       },
       "proposed": {
         "name": "Proposed"
+      },
+      "pellet_stove": {
+        "name": "Fuel status"
       }
     }
   }

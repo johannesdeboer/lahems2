@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant import config_entries
+from homeassistant.components import frontend
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er
 from pytest_homeassistant.common import MockConfigEntry
@@ -306,7 +307,9 @@ async def test_energy_balance_and_external_schedule(hass, household):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_energy_balance")
+    assert frontend.async_panel_exists(hass, "lahems2-overview")
     attributes = hass.states.get(entity_id).attributes
+    assert attributes["lahems2_view"] == "energy_balance"
     assert attributes["grid_w"] == -1000
     assert attributes["ev_w"] == -1500
     assert attributes["pv_w"] is None
@@ -330,3 +333,6 @@ async def test_energy_balance_and_external_schedule(hass, household):
     state = hass.states.get(entity_id)
     assert state.state == "Expired"
     assert state.attributes["external_ev_schedule"] == []
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert not frontend.async_panel_exists(hass, "lahems2-overview")

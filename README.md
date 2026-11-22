@@ -74,6 +74,15 @@ Data Status checks for staleness every minute and when a bound entity changes.
 Forecast and schedule bindings report availability and leave
 interpretation of future values to the planner.
 
+## Open the LAHEMS2 dashboard
+
+After setting up the integration, select **LAHEMS2** in the Home Assistant
+sidebar. The panel shows current household power, the heating proposal,
+EV status, and any inputs that need attention. Under **Accepted EV schedule**,
+choose the next 6 or 24 hours to see 15-minute charging and discharging targets
+in your Home Assistant time zone. The totals cover published intervals only.
+Use **Configure LAHEMS2** to bind a schedule source and other inputs.
+
 ## View Actual and Proposed
 
 Open the LAHEMS2 integration in **Settings → Devices & services** and select
@@ -120,8 +129,11 @@ The schedule uses the configured EV sign. LAHEMS2 averages power over each
 fully covered 15-minute interval for up to 48 hours. Gaps remain unknown.
 Expired schedules and disconnected EVs supply no schedule intervals.
 A current-power setpoint or a calendar state alone supplies no future plan.
-The external controller continues to own the EV schedule. V2G Liberty 0.9.0
-can supply this format through the [accepted schedule export](docs/v2g-liberty-schedule.md).
+The external controller continues to own the EV schedule. The
+[V2G Liberty fork](https://github.com/johannesdeboer/addon-v2g-liberty) publishes
+it as `sensor.v2g_liberty_accepted_ev_schedule`. Select that sensor as
+**Scheduled EV power from the external controller** in **Configure**.
+[Accepted schedule export](docs/v2g-liberty-schedule.md).
 
 To uninstall, remove the LAHEMS2 integration entry in **Devices & services**
 and then remove the component through the Marketplace or remove the manually

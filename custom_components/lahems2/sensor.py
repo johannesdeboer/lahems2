@@ -81,6 +81,11 @@ class SnapshotSensor(CoordinatorEntity[SnapshotCoordinator], SensorEntity):
 
     _attr_has_entity_name = True
 
+    @property
+    def capability_attributes(self) -> dict:
+        """Identify the dashboard's sources independently of entity ID changes."""
+        return {"lahems2_view": self._attr_translation_key}
+
     def __init__(self, coordinator: SnapshotCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         key = self._attr_translation_key

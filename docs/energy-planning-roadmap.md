@@ -18,6 +18,10 @@ a timestamped series via the [external schedule input](../README.md#read-energy-
 The [V2G Liberty schedule export](v2g-liberty-schedule.md) publishes that series
 once V2G Liberty has accepted the plan.
 
+The LAHEMS2 sidebar panel shows the accepted EV schedule, the planned charging
+and discharging energy, and how much of the selected time range the plan covers.
+This makes the plan available for inspection before it is used in optimisation.
+
 ## Milestones
 
 1. **Current observations and heating proposals.** Show the measurements,

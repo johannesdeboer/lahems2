@@ -39,9 +39,32 @@ Start the same setup wizard from **Add integration**.
    how often the price entities report. You can also add
    an external EV power source and schedule. For each battery, specify its
    power sign convention and the controller that owns its setpoints.
-4. Review the selected entities, readings and availability, then save. Open
-   **Settings → Devices & services → LAHEMS2 → Configure** to edit any binding,
-   change the preferred area, or add or remove the pellet switch or batteries.
+4. Review the selected entities, readings and availability, then save.
+
+### Edit one section or reuse Home Assistant Energy
+
+Open **Settings → Devices & services → LAHEMS2 → Configure**. Choose
+**Temperature & comfort**, **Heating**, **Grid & tariffs**, **Solar**, **EV**,
+or **Home batteries**. Saving one section preserves the other sections. To
+change or remove a battery, select that battery in **Home batteries**.
+
+- **Use Home Assistant Energy sources** previews proposed net grid power,
+  tariff entities and measured solar sources. Select the sections to update.
+- In **Heating**, choose a device to suggest a thermostat and its meters, or
+  select a meter already assigned to an individual device in Energy.
+- In **Home batteries**, adding a battery lets you choose an existing Energy
+  storage source or a Home Assistant device. Review the suggested power and
+  state of charge. Energy can also supply the rated capacity when configured.
+- In **EV**, choose a device or request suggestions for V2G Liberty. If the EV
+  appears as a battery in Energy, select its row here. LAHEMS2 checks that
+  it is only configured once. If necessary, remove it from **Home batteries**
+  before saving the EV section.
+
+You can edit suggested entity selections before saving. LAHEMS2 saves entity
+references and planning settings, then reads current values from Home Assistant.
+It does not write Energy preferences, store a second measurement history, or
+send commands in Shadow Mode. Energy's water sources and historical statistics
+are not imported by this setup flow.
 
 ## Read Data Status
 

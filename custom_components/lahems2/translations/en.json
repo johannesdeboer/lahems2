@@ -142,7 +142,7 @@
       },
       "heat": {
         "title": "Heat sources",
-        "description": "Select the heat pump thermostat. Its current setpoint is the comfort baseline. The pellet heat-request switch and separate meters are optional.",
+        "description": "Select the heat pump thermostat. Its current setpoint is the comfort baseline. The pellet heat-request switch and separate meters are optional.\n\n{suggestions}",
         "data": {
           "thermostat": "Heat pump thermostat",
           "heat_pump_power": "Heat pump power",
@@ -159,35 +159,9 @@
           "pellet_heat_request": "Select the switch entity for your heat request, such as an ESPHome relay. LAHEMS2 reads its current state."
         }
       },
-      "energy": {
-        "title": "Grid, prices, solar and EV",
-        "description": "Confirm one primary grid meter and review the suggested price and solar sources. You can leave prices blank and add them later.",
-        "data": {
-          "grid_meter": "Primary grid meter",
-          "import_price": "Import price",
-          "export_price": "Export price",
-          "pv_power": "Measured solar power",
-          "solar_forecast": "Solar forecast",
-          "ev_power": "Measured EV power",
-          "ev_connected": "EV connection sensor",
-          "ev_soc": "EV state of charge sensor",
-          "ev_departure": "EV departure timestamp sensor",
-          "ev_required_soc_percent": "Required EV charge at departure (%)",
-          "grid_positive_export": "Positive grid power means export",
-          "ev_positive_discharge": "Positive EV power means discharge",
-          "import_limit_w": "Grid import limit (W)",
-          "export_limit_w": "Grid export limit (W)",
-          "ev_schedule": "Scheduled EV power from the external controller",
-          "add_battery": "Add a battery",
-          "tariff_max_age_minutes": "Tariff freshness limit (minutes)"
-        },
-        "data_description": {
-          "tariff_max_age_minutes": "Maximum time since Home Assistant last reported an import or export price. Use 15 minutes for a source that reports each quarter-hour tariff."
-        }
-      },
       "battery": {
         "title": "Battery",
-        "description": "Enter the measurements, limits, and controller for battery {number}. Select Add another battery to include an additional battery.",
+        "description": "Review the measurements and planning limits for battery {number}.\n\n{suggestions}",
         "data": {
           "battery_power": "Measured battery power",
           "battery_soc": "Battery state of charge",
@@ -197,13 +171,97 @@
           "reserve": "Minimum reserve (%)",
           "power_sign": "Power sign convention",
           "controller": "Battery controller",
-          "add_another": "Add another battery",
           "remove_battery": "Remove this battery"
         }
       },
-      "review": {
-        "title": "Review your bindings",
-        "description": "LAHEMS2 runs in **{mode}**. Saving starts read-only monitoring.\n\n{readings}"
+      "init": {
+        "title": "Configure LAHEMS2",
+        "description": "Choose what to update. Saving a section keeps your other settings.",
+        "menu_options": {
+          "energy_import": "Use Home Assistant Energy sources",
+          "area": "Temperature & comfort",
+          "heating_source": "Heating",
+          "grid": "Grid & tariffs",
+          "solar": "Solar",
+          "ev_source": "EV",
+          "batteries": "Home batteries"
+        }
+      },
+      "energy_import": {
+        "title": "Use Home Assistant Energy sources",
+        "description": "Review the proposed changes, then choose which sections to apply. You can select Energy sources for heating, batteries and EV in their own settings.\n\n{changes}",
+        "data": {
+          "sections": "Sections to update"
+        }
+      },
+      "heating_source": {
+        "title": "Heating source",
+        "description": "Choose a thermostat device or an individual device meter from Home Assistant Energy. Leave both blank to edit your current selections manually.",
+        "data": {
+          "device": "Home Assistant device",
+          "energy_meter": "Individual device meter from Energy"
+        }
+      },
+      "ev_source": {
+        "title": "EV source",
+        "description": "Choose V2G Liberty or a Home Assistant device for entity suggestions. If your EV is listed as a battery in Energy, select that source here so LAHEMS2 only counts it as an EV. Continue without choosing a source to edit entities manually.",
+        "data": {
+          "use_v2g": "Suggest V2G Liberty entities",
+          "device": "Home Assistant device",
+          "energy_storage": "EV storage source in Energy"
+        }
+      },
+      "batteries": {
+        "title": "Home batteries",
+        "description": "Select an existing battery or add a new one.",
+        "data": {
+          "battery_slot": "Battery to configure"
+        }
+      },
+      "battery_source": {
+        "title": "New battery source",
+        "description": "Choose an Energy storage source or a Home Assistant device to find compatible measurements. Continue with both fields empty for manual selection.",
+        "data": {
+          "device": "Home Assistant device",
+          "energy_storage": "Battery source in Energy"
+        }
+      },
+      "grid": {
+        "title": "Grid & tariffs",
+        "description": "Choose one meter for net grid flow. Energy counters can provide historical totals. A power sensor is needed for the live power balance.",
+        "data": {
+          "grid_meter": "Primary grid meter",
+          "import_price": "Import price",
+          "export_price": "Export price",
+          "grid_positive_export": "Positive grid power means export",
+          "import_limit_w": "Grid import limit (W)",
+          "export_limit_w": "Grid export limit (W)",
+          "tariff_max_age_minutes": "Tariff freshness limit (minutes)"
+        },
+        "data_description": {
+          "tariff_max_age_minutes": "Maximum time since Home Assistant last reported an import or export price. Use 15 minutes for a source that reports each quarter-hour tariff."
+        }
+      },
+      "solar": {
+        "title": "Solar",
+        "description": "Confirm the live production sensors and optional forecast entities.",
+        "data": {
+          "pv_power": "Measured solar power",
+          "solar_forecast": "Solar forecast"
+        }
+      },
+      "ev": {
+        "title": "EV measurements and schedule",
+        "description": "Review the selected entities and sign convention. LAHEMS2 reads the external schedule in Shadow Mode.\n\n{suggestions}",
+        "data": {
+          "ev_power": "Measured EV power",
+          "ev_connected": "EV connection sensor",
+          "ev_soc": "EV state of charge sensor",
+          "ev_departure": "EV departure timestamp sensor",
+          "ev_required_soc_percent": "Required EV charge at departure (%)",
+          "ev_positive_discharge": "Positive EV power means discharge",
+          "ev_schedule": "Scheduled EV power from the external controller"
+        }
       }
     },
     "error": {
@@ -213,7 +271,11 @@
       "unreadable_relay": "The switch must report On or Off before it can be added.",
       "duplicate_temperature": "Choose a different backup sensor.",
       "invalid_number": "Enter a value within the displayed limits.",
-      "required_setting": "Enter a value for this battery setting."
+      "required_setting": "Enter a value for this battery setting.",
+      "invalid_source": "This source is no longer available. Choose a current source.",
+      "duplicate_battery": "This source is already linked to another battery.",
+      "storage_used_for_ev": "This source is already used by the EV. Choose another source.",
+      "storage_used_for_battery": "This EV source is configured as a home battery. Remove that battery from Home batteries before saving the EV."
     }
   },
   "selector": {

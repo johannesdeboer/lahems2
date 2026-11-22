@@ -1,6 +1,7 @@
 """Exercise the setup, Configure and Data Status with Home Assistant Core."""
 
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -11,7 +12,7 @@ from homeassistant.helpers import area_registry as ar, device_registry as dr, en
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.lahems2.const import (
-    BACKUP, BINDINGS, DOMAIN, MODE, PRIMARY, RELAY, SETTINGS, TARIFF_MAX_AGE, TEMPERATURE_MAX_AGE,
+    BACKUP, BATTERIES, BINDINGS, DOMAIN, MODE, PRIMARY, RELAY, SETTINGS, TARIFF_MAX_AGE, TEMPERATURE_MAX_AGE,
 )
 from custom_components.lahems2.inputs import Inputs
 
@@ -69,6 +70,12 @@ async def submit(manager, result, step, values):
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == step
     return await manager.async_configure(result["flow_id"], values)
+
+
+async def choose(manager, entry, section):
+    result = await manager.async_init(entry.entry_id)
+    assert result["type"] == FlowResultType.MENU
+    return await manager.async_configure(result["flow_id"], {"next_step_id": section})
 
 
 def status(hass, entry):
@@ -135,22 +142,30 @@ async def test_setup_and_edit_in_shadow_mode(hass, household, with_relay):
             assert attrs["roles"]["Measured EV power"]["reading"] == "800"
 
         options = hass.config_entries.options
-        result = await options.async_init(entry.entry_id)
+        result = await choose(options, entry, "area")
         result = await submit(options, result, "area", {"area": bedroom.id})
         assert result["description_placeholders"]["suggestions"] == f"`{backup}`"
         result = await submit(options, result, "area_temperatures", {PRIMARY: backup})
         result = await submit(options, result, "temperatures", {PRIMARY: UNASSIGNED, TEMPERATURE_MAX_AGE: 8})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert (RELAY in entry.options[BINDINGS]) == with_relay
+        result = await choose(options, entry, "heating_source")
+        result = await submit(options, result, "heating_source", {})
         heat = {"thermostat": THERMOSTAT}
         if not with_relay:
             heat[RELAY] = RELAY_ENTITY
         result = await submit(options, result, "heat", heat)
-        result = await submit(options, result, "energy", {
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        result = await choose(options, entry, "grid")
+        result = await submit(options, result, "grid", {
             "grid_meter": GRID, "import_price": "sensor.import_price",
             "export_price": "sensor.import_price", TARIFF_MAX_AGE: 20,
         })
         if with_relay:
+            result = await choose(options, entry, "batteries")
+            result = await submit(options, result, "batteries", {"battery_slot": "0"})
             result = await submit(options, result, "battery", {"remove_battery": True})
-        result = await submit(options, result, "review", {})
+            assert not entry.options[BATTERIES]
         assert result["type"] == FlowResultType.CREATE_ENTRY
         await hass.async_block_till_done()
         attrs = status(hass, entry)
@@ -164,6 +179,98 @@ async def test_setup_and_edit_in_shadow_mode(hass, household, with_relay):
         await hass.config_entries.async_reload(entry.entry_id)
         assert status(hass, entry)["active_indoor_temperature"]["entity_id"] == UNASSIGNED
         call_service.assert_not_called()
+
+
+async def test_energy_import_keeps_saved_sections_and_reads_live_values(hass, household):
+    inputs = Inputs(hass)
+    old_grid = "sensor.old_grid_power"
+    solar = ["sensor.solar_east", "sensor.solar_west"]
+    for entity_id, value in [(old_grid, "12"), (solar[0], "500"), (solar[1], "300")]:
+        hass.states.async_set(entity_id, value, {"device_class": "power", "unit_of_measurement": "W"})
+    counter = "sensor.grid_energy"
+    hass.states.async_set(counter, "123", {"device_class": "energy", "unit_of_measurement": "kWh"})
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        BINDINGS: {
+            PRIMARY: inputs.bind(UNASSIGNED),
+            "thermostat": inputs.bind(THERMOSTAT),
+            "grid_meter": inputs.bind(old_grid),
+        },
+        SETTINGS: {"grid_positive_export": True, "import_limit_w": 8000},
+        BATTERIES: [],
+    })
+    entry.add_to_hass(hass)
+    prefs = {
+        "energy_sources": [
+            {"type": "grid", "stat_rate": GRID, "stat_energy_from": counter, "entity_energy_price": "sensor.import_price"},
+            {"type": "grid", "stat_rate": GRID, "entity_energy_price_export": "sensor.import_price"},
+            {"type": "solar", "stat_rate": solar[0]},
+            {"type": "solar", "stat_rate": solar[1]},
+            {"type": "solar", "stat_rate": solar[0]},
+            {"type": "water", "stat_energy_from": "sensor.water"},
+        ],
+    }
+    with patch("custom_components.lahems2.sources.async_get_manager", return_value=SimpleNamespace(data=prefs)):
+        manager = hass.config_entries.options
+        result = await choose(manager, entry, "energy_import")
+        assert old_grid in result["description_placeholders"]["changes"]
+        assert f"{solar[0]} (500 W)" in result["description_placeholders"]["changes"]
+        assert "water" not in result["description_placeholders"]["changes"]
+        result = await submit(manager, result, "energy_import", {"sections": ["grid", "solar"]})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    profile = entry.options
+    assert profile[BINDINGS][PRIMARY] == entry.data[BINDINGS][PRIMARY]
+    assert profile[BINDINGS]["grid_meter"]["entity_id"] == GRID
+    assert [binding["entity_id"] for binding in profile[BINDINGS]["pv_power"]] == solar
+    assert profile[SETTINGS] == {"grid_positive_export": False, "import_limit_w": 8000}
+    assert inputs.snapshot(profile)["energy"]["pv_w"] == 800
+    hass.states.async_set(solar[0], "600", {"device_class": "power", "unit_of_measurement": "W"})
+    assert inputs.snapshot(profile)["energy"]["pv_w"] == 900
+
+
+async def test_storage_source_can_only_be_used_once(hass, household):
+    inputs = Inputs(hass)
+    ev_power = "sensor.charger_real_charging_power"
+    normalized_power = "sensor.ev_power"
+    schedule = "sensor.v2g_liberty_accepted_ev_schedule"
+    hass.states.async_set(ev_power, "-800", {"device_class": "power", "unit_of_measurement": "W"})
+    hass.states.async_set(schedule, "active", {"intervals": []})
+    identity = "sensor.ev_discharge_energy"
+    prefs = {"energy_sources": [{
+        "type": "battery", "stat_energy_from": identity, "stat_rate": normalized_power,
+        "power_config": {"stat_rate_inverted": ev_power},
+    }]}
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        BINDINGS: {"grid_meter": inputs.bind(GRID)},
+        SETTINGS: {},
+        BATTERIES: [{
+            BINDINGS: {"battery_power": inputs.bind(normalized_power), "battery_soc": inputs.bind("sensor.battery_state_of_charge")},
+            "capacity": 5, "charge_limit": 1500, "discharge_limit": 1000, "reserve": 20,
+            "power_sign": "positive_discharge", "controller": "External controller",
+        }],
+    })
+    entry.add_to_hass(hass)
+    manager = hass.config_entries.options
+    with patch("custom_components.lahems2.sources.async_get_manager", return_value=SimpleNamespace(data=prefs)):
+        result = await choose(manager, entry, "ev_source")
+        result = await submit(manager, result, "ev_source", {"use_v2g": True, "energy_storage": identity})
+        defaults = {key.schema: key.description.get("suggested_value") for key in result["data_schema"].schema if key.description}
+        assert defaults["ev_power"] == ev_power
+        assert defaults["ev_schedule"] == schedule
+        result = await submit(manager, result, "ev", {"ev_power": ev_power, "ev_schedule": schedule})
+        assert result["errors"] == {"ev_power": "storage_used_for_battery"}
+        assert not entry.options
+
+        result = await choose(manager, entry, "batteries")
+        result = await submit(manager, result, "batteries", {"battery_slot": "0"})
+        result = await submit(manager, result, "battery", {"remove_battery": True})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+
+        result = await choose(manager, entry, "ev_source")
+        result = await submit(manager, result, "ev_source", {"use_v2g": True, "energy_storage": identity})
+        result = await submit(manager, result, "ev", {"ev_power": ev_power, "ev_schedule": schedule})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert entry.options[SETTINGS]["ev_energy_source"] == identity
+        assert inputs.snapshot(entry.options)["energy"]["ev_w"] == -800
 
 
 async def test_data_status_and_temperature_fallback(hass, household):

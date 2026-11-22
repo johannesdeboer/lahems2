@@ -1,5 +1,6 @@
 """English setup and options flows for the single heating zone."""
 
+from copy import deepcopy
 from html import escape
 
 import probatio as vol
@@ -30,6 +31,13 @@ from .const import (
 )
 from .inputs import Inputs, matches_role
 from .model import numeric_value
+from .sources import Sources
+
+GRID_ROLES = {key: ENERGY_ROLES[key] for key in ("grid_meter", "import_price", "export_price")}
+SOLAR_ROLES = {key: ENERGY_ROLES[key] for key in ("pv_power", "solar_forecast")}
+EV_ROLES = {key: role for key, role in ENERGY_ROLES.items() if key.startswith("ev_")}
+GRID_SETTINGS = (TARIFF_MAX_AGE, "grid_positive_export", "import_limit_w", "export_limit_w")
+EV_SETTINGS = ("ev_positive_discharge", "ev_required_soc_percent")
 
 
 def _entity_picker(role: Role, include: list[str] | None = None) -> selector.EntitySelector:
@@ -69,6 +77,9 @@ class _Wizard:
         self._temperature_choices = {}
         self._battery_index = 0
         self._saved_batteries = previous.get(BATTERIES, [])
+        self._section_mode = False
+        self._suggestions = {}
+        self._sources = None
 
     def _form(self, step_id, fields, values=None, errors=None, placeholders=None):
         return self.async_show_form(
@@ -91,6 +102,27 @@ class _Wizard:
     def _saved_values(self, roles: dict[str, Role]) -> dict:
         bindings = self._previous.get(BINDINGS, {})
         return self._selection_values({key: bindings[key] for key in roles if key in bindings})
+
+    def _replace_bindings(self, roles, bindings):
+        for key in roles:
+            self._profile[BINDINGS].pop(key, None)
+        self._profile[BINDINGS].update(bindings)
+
+    def _replace_settings(self, keys, values):
+        for key in keys:
+            self._profile[SETTINGS].pop(key, None)
+        self._profile[SETTINGS].update(values)
+
+    def _describe_reading(self, key, role, entity_id):
+        reading = self._inputs.reading(key, role, self._inputs.bind(entity_id))
+        detail = " ".join(str(part) for part in (reading["reading"], reading["unit"]) if part is not None)
+        return f"{entity_id} ({detail or reading['status']})"
+
+    def _suggestion_preview(self, roles):
+        return "\n".join(
+            f"- **{role.label}** · {escape(self._describe_reading(key, role, self._suggestions[key]))}"
+            for key, role in roles.items() if key in self._suggestions
+        )
 
     def _validate_bindings(
         self, roles: dict[str, Role], values: dict, previous: dict
@@ -180,8 +212,10 @@ class _Wizard:
             if max_age is None or max_age < 1:
                 errors[TEMPERATURE_MAX_AGE] = "invalid_number"
             if not errors:
-                self._profile[BINDINGS].update(bindings)
+                self._replace_bindings(ZONE_ROLES, bindings)
                 self._profile[SETTINGS][TEMPERATURE_MAX_AGE] = max_age
+                if self._section_mode:
+                    return self._finish()
                 return await self.async_step_heat()
         values = self._saved_values(ZONE_ROLES) | self._temperature_choices
         return self._form(
@@ -204,17 +238,22 @@ class _Wizard:
                 if key in user_input and numeric_value(user_input[key]) is None:
                     errors[key] = "invalid_number"
             if not errors:
-                self._profile[BINDINGS].update(bindings)
-                self._profile[SETTINGS].update({
-                    key: value for key, value in user_input.items() if key not in HEAT_ROLES
-                })
+                self._replace_bindings(HEAT_ROLES, bindings)
+                keys = ("shared_circuit", "pellet_price_threshold", "pellet_budget")
+                self._replace_settings(keys, {key: user_input[key] for key in keys if key in user_input})
+                if self._section_mode:
+                    return self._finish()
                 return await self.async_step_energy()
         values = self._saved_values(HEAT_ROLES) | self._previous.get(SETTINGS, {})
         if not self._previous:
             thermostats = self._inputs.candidates(HEAT_ROLES["thermostat"])
             if len(thermostats) == 1:
                 values["thermostat"] = thermostats[0].entity_id
-        return self._form("heat", fields, user_input if user_input is not None else values, errors)
+        values.update(self._suggestions)
+        return self._form(
+            "heat", fields, user_input if user_input is not None else values, errors,
+            {"suggestions": self._suggestion_preview(HEAT_ROLES)},
+        )
 
     async def async_step_energy(self, user_input=None):
         max_age = self._freshness_default(TARIFF_MAX_AGE)
@@ -248,7 +287,9 @@ class _Wizard:
                 if user_input.get("add_battery") or self._saved_batteries:
                     return await self.async_step_battery()
                 return await self.async_step_review()
-        values = self._saved_values(ENERGY_ROLES) if self._previous else self._inputs.energy_suggestions()
+        if self._sources is None:
+            self._sources = await Sources.load(self._inputs)
+        values = self._inputs.energy_suggestions() | self._sources.defaults()
         previous_settings = self._previous.get(SETTINGS, {})
         values.update({key: previous_settings[key] for key in (*limits, *signs) if key in previous_settings})
         return self._form("energy", fields, user_input if user_input is not None else values, errors)
@@ -265,8 +306,9 @@ class _Wizard:
                 "options": ["positive_charge", "positive_discharge"], "translation_key": "power_sign",
             }),
             vol.Optional("controller"): selector.TextSelector(),
-            vol.Optional("add_another", default=False): selector.BooleanSelector(),
         }
+        if not self._section_mode:
+            fields[vol.Optional("add_another", default=False)] = selector.BooleanSelector()
         if existing:
             fields[vol.Optional("remove_battery", default=False)] = selector.BooleanSelector()
         errors = {}
@@ -281,12 +323,34 @@ class _Wizard:
                 for key in ("power_sign", "controller"):
                     if not user_input.get(key, "").strip():
                         errors[key] = "required_setting"
+                if "battery_power" in bindings:
+                    power = self._inputs.entity_id(bindings["battery_power"])
+                    ev = self._profile[BINDINGS].get("ev_power")
+                    ev_power = self._inputs.entity_id(ev) if ev else None
+                    if self._sources.same_storage(power, ev_power, self._profile[SETTINGS].get("ev_energy_source")):
+                        errors["battery_power"] = "storage_used_for_ev"
+                    elif any(
+                        self._sources.same_storage(power, self._inputs.entity_id(battery[BINDINGS]["battery_power"]))
+                        for index, battery in enumerate(self._profile[BATTERIES]) if index != self._battery_index
+                    ):
+                        errors["battery_power"] = "duplicate_battery"
                 if not errors:
-                    self._profile[BATTERIES].append({
+                    battery = {
+                        **previous,
                         BINDINGS: bindings,
-                        **{key: user_input[key] for key in (*minimums, "power_sign", "controller")},
-                    })
+                        **{key: user_input[key] for key in minimums},
+                        "power_sign": user_input["power_sign"],
+                        "controller": user_input["controller"].strip(),
+                    }
+                    if self._section_mode and existing:
+                        self._profile[BATTERIES][self._battery_index] = battery
+                    else:
+                        self._profile[BATTERIES].append(battery)
             if not errors:
+                if self._section_mode:
+                    if existing and user_input.get("remove_battery"):
+                        self._profile[BATTERIES].pop(self._battery_index)
+                    return self._finish()
                 self._battery_index += 1
                 if self._battery_index < len(self._saved_batteries) or user_input.get("add_another"):
                     return await self.async_step_battery()
@@ -294,9 +358,10 @@ class _Wizard:
         values = self._selection_values(previous.get(BINDINGS, {})) | {
             key: value for key, value in previous.items() if key != BINDINGS
         }
+        values.update(self._suggestions)
         return self._form(
             "battery", fields, user_input if user_input is not None else values,
-            errors, {"number": str(self._battery_index + 1)},
+            errors, {"number": str(self._battery_index + 1), "suggestions": self._suggestion_preview(BATTERY_ROLES)},
         )
 
     async def async_step_review(self, user_input=None):
@@ -347,7 +412,234 @@ class Lahems2OptionsFlow(_Wizard, config_entries.OptionsFlowWithReload):
 
     async def async_step_init(self, user_input=None):
         self._start(dict(self.config_entry.options or self.config_entry.data))
-        return await self.async_step_area(user_input)
+        self._section_mode = True
+        self._profile.update(deepcopy(self._previous))
+        self._sources = await Sources.load(self._inputs)
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["energy_import", "area", "heating_source", "grid", "solar", "ev_source", "batteries"],
+        )
+
+    def _choice(self, options, *, multiple=False):
+        return selector.SelectSelector({
+            "options": [{"value": value, "label": label} for value, label in options.items()],
+            "multiple": multiple,
+            "mode": "dropdown",
+        })
+
+    def _source_values(self, sources, input_key, user_input):
+        """Validate optional source and device choices on the server."""
+        errors = {}
+        if (source := user_input.get(input_key)) and source not in sources:
+            errors[input_key] = "invalid_source"
+        if (device := user_input.get("device")) and not self._inputs.devices.async_get(device):
+            errors["device"] = "invalid_source"
+        return errors
+
+    async def async_step_energy_import(self, user_input=None):
+        defaults = self._sources.defaults()
+        sections = {
+            "grid": ("Grid & tariffs", GRID_ROLES),
+            "solar": ("Solar", SOLAR_ROLES),
+        }
+        previous = self._previous.get(BINDINGS, {})
+        proposals = {}
+        lines = []
+        for section, (title, roles) in sections.items():
+            changed = {}
+            current = self._saved_values(roles)
+            for key, value in defaults.items():
+                if key not in roles:
+                    continue
+                old = current.get(key)
+                grid_sign_changed = key == "grid_meter" and self._previous.get(SETTINGS, {}).get("grid_positive_export")
+                if old == value and not grid_sign_changed:
+                    continue
+                changed[key] = value
+                old_label = ", ".join(old) if isinstance(old, list) else old or "Not configured"
+                ids = value if isinstance(value, list) else [value]
+                readings = [self._describe_reading(key, roles[key], entity_id) for entity_id in ids]
+                sign = " · positive means grid import" if key == "grid_meter" else ""
+                lines.append(f"- **{roles[key].label}** · {escape(old_label)} → {escape(', '.join(readings))}{sign}")
+            if changed:
+                proposals[section] = changed
+        errors = {}
+        if user_input is not None:
+            selected = user_input.get("sections", [])
+            if not set(selected).issubset(proposals):
+                errors["sections"] = "invalid_source"
+            elif selected:
+                for section in selected:
+                    changes = proposals[section]
+                    roles = sections[section][1]
+                    bindings, invalid = self._validate_bindings(
+                        {key: roles[key] for key in changes}, changes, previous
+                    )
+                    if invalid:
+                        errors["sections"] = "invalid_source"
+                        break
+                    self._profile[BINDINGS].update(bindings)
+                    if "grid_meter" in bindings:
+                        self._profile[SETTINGS]["grid_positive_export"] = False
+                if not errors:
+                    return self._finish()
+                self._profile = deepcopy(self._previous)
+            else:
+                return await self.async_step_init()
+        fields = {}
+        if proposals:
+            fields[vol.Optional("sections")] = self._choice(
+                {section: sections[section][0] for section in proposals}, multiple=True
+            )
+        return self._form(
+            "energy_import", fields, user_input, errors,
+            {"changes": "\n".join(lines) or "No new compatible grid, tariff or solar sources."},
+        )
+
+    async def async_step_heating_source(self, user_input=None):
+        fields = {vol.Optional("device"): selector.DeviceSelector()}
+        meters = {
+            source: row.get("name") or source for source, row in self._sources.consumers.items()
+            if self._sources.heat_defaults(source)
+        }
+        if meters:
+            fields[vol.Optional("energy_meter")] = self._choice(meters)
+        errors = {}
+        if user_input is not None:
+            errors = self._source_values(meters, "energy_meter", user_input)
+            if not errors:
+                device = self._sources.device_defaults(
+                    user_input.get("device"), ("thermostat", "heat_pump_power", "heat_pump_energy")
+                )
+                self._suggestions = device | self._sources.heat_defaults(user_input.get("energy_meter"))
+                return await self.async_step_heat()
+        return self._form("heating_source", fields, user_input, errors)
+
+    def _edit_section(self, step, roles, settings, fields, user_input, suggestions=None):
+        errors = {}
+        if user_input is not None:
+            bindings, errors = self._validate_bindings(roles, user_input, self._previous.get(BINDINGS, {}))
+            values = {key: user_input[key] for key in settings if key in user_input}
+            number_limits = {
+                TARIFF_MAX_AGE: (1, None),
+                "import_limit_w": (0, None),
+                "export_limit_w": (0, None),
+                "ev_required_soc_percent": (0, 100),
+            }
+            for key, (minimum, maximum) in number_limits.items():
+                if key in values:
+                    value = numeric_value(values[key])
+                    if value is None or value < minimum or (maximum is not None and value > maximum):
+                        errors[key] = "invalid_number"
+                    else:
+                        values[key] = value
+            if step == "ev":
+                ev_binding = bindings.get("ev_power")
+                ev_power = self._inputs.entity_id(ev_binding) if ev_binding else None
+                if any(
+                    self._sources.same_storage(
+                        self._inputs.entity_id(battery[BINDINGS]["battery_power"]), ev_power, self._ev_storage,
+                    )
+                    for battery in self._saved_batteries
+                ):
+                    errors["ev_power"] = "storage_used_for_battery"
+                if self._ev_storage:
+                    values["ev_energy_source"] = self._ev_storage
+            if not errors:
+                self._replace_bindings(roles, bindings)
+                self._replace_settings(settings, values)
+                return self._finish()
+        defaults = self._saved_values(roles) | {
+            key: self._previous[SETTINGS][key] for key in settings
+            if key in self._previous.get(SETTINGS, {})
+        }
+        defaults.update(suggestions or {})
+        return self._form(
+            step, _role_fields(roles) | fields,
+            user_input if user_input is not None else defaults, errors,
+            {"suggestions": self._suggestion_preview(roles)} if suggestions else {"suggestions": ""},
+        )
+
+    async def async_step_grid(self, user_input=None):
+        fields = {
+            vol.Required(TARIFF_MAX_AGE, default=self._freshness_default(TARIFF_MAX_AGE)): _number(1),
+            vol.Optional("grid_positive_export", default=False): selector.BooleanSelector(),
+            vol.Optional("import_limit_w"): _number(0),
+            vol.Optional("export_limit_w"): _number(0),
+        }
+        return self._edit_section("grid", GRID_ROLES, GRID_SETTINGS, fields, user_input)
+
+    async def async_step_solar(self, user_input=None):
+        return self._edit_section("solar", SOLAR_ROLES, (), {}, user_input)
+
+    async def async_step_ev_source(self, user_input=None):
+        storage = {key: self._sources.storage_label(key, row) for key, row in self._sources.storage().items()}
+        fields = {
+            vol.Optional("use_v2g", default=False): selector.BooleanSelector(),
+            vol.Optional("device"): selector.DeviceSelector(),
+        }
+        if storage:
+            fields[vol.Optional("energy_storage")] = self._choice({"none": "None"} | storage)
+        errors = {}
+        existing = self._previous.get(SETTINGS, {}).get("ev_energy_source")
+        if user_input is not None:
+            errors = self._source_values({"none": "None"} | storage, "energy_storage", user_input)
+            if not errors:
+                picked = user_input.get("energy_storage")
+                self._ev_storage = existing if picked is None else storage.get(picked) and picked
+                self._suggestions = self._sources.ev_defaults(
+                    user_input.get("use_v2g"), picked, user_input.get("device")
+                )
+                return await self.async_step_ev()
+        return self._form(
+            "ev_source", fields, user_input if user_input is not None else
+            ({"energy_storage": existing} if existing in storage else {}), errors,
+        )
+
+    async def async_step_ev(self, user_input=None):
+        return self._edit_section("ev", EV_ROLES, (*EV_SETTINGS, "ev_energy_source"), {
+            vol.Optional("ev_positive_discharge", default=False): selector.BooleanSelector(),
+            vol.Optional("ev_required_soc_percent"): _number(0, 100),
+        }, user_input, self._suggestions)
+
+    async def async_step_batteries(self, user_input=None):
+        options = {"new": "Add a battery"}
+        for index, battery in enumerate(self._saved_batteries):
+            power = self._inputs.entity_id(battery[BINDINGS]["battery_power"])
+            candidate = self._inputs.candidate(power)
+            options[str(index)] = f"Battery {index + 1} · {candidate.name if candidate else power}"
+        errors = {}
+        if user_input is not None:
+            selected = user_input.get("battery_slot")
+            if selected in options:
+                self._battery_index = len(self._saved_batteries) if selected == "new" else int(selected)
+                return await self.async_step_battery_source() if selected == "new" else await self.async_step_battery()
+            errors["battery_slot"] = "invalid_source"
+        return self._form(
+            "batteries", {vol.Required("battery_slot", default="new"): self._choice(options)}, user_input, errors
+        )
+
+    async def async_step_battery_source(self, user_input=None):
+        ev = self._previous.get(BINDINGS, {}).get("ev_power")
+        ev_power = self._inputs.entity_id(ev) if ev else None
+        ev_source = self._previous.get(SETTINGS, {}).get("ev_energy_source")
+        storage = {
+            key: self._sources.storage_label(key, row)
+            for key, row in self._sources.storage().items()
+            if key != ev_source and key != self._sources.storage_identity(ev_power)
+        }
+        fields = {vol.Optional("device"): selector.DeviceSelector()}
+        if storage:
+            fields[vol.Optional("energy_storage")] = self._choice(storage)
+        errors = {}
+        if user_input is not None:
+            errors = self._source_values(storage, "energy_storage", user_input)
+            if not errors:
+                self._suggestions = self._sources.battery_defaults(
+                    user_input.get("energy_storage"), user_input.get("device")
+                )
+                return await self.async_step_battery()
+        return self._form("battery_source", fields, user_input, errors)
 
     def _finish(self):
         return self.async_create_entry(title="", data=self._profile)

@@ -225,6 +225,8 @@ async def test_energy_import_keeps_saved_sections_and_reads_live_values(hass, ho
     assert inputs.snapshot(profile)["energy"]["pv_w"] == 800
     hass.states.async_set(solar[0], "600", {"device_class": "power", "unit_of_measurement": "W"})
     assert inputs.snapshot(profile)["energy"]["pv_w"] == 900
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def test_storage_source_can_only_be_used_once(hass, household):
@@ -259,6 +261,7 @@ async def test_storage_source_can_only_be_used_once(hass, household):
         result = await submit(manager, result, "ev", {"ev_power": ev_power, "ev_schedule": schedule})
         assert result["errors"] == {"ev_power": "storage_used_for_battery"}
         assert not entry.options
+        manager.async_abort(result["flow_id"])
 
         result = await choose(manager, entry, "batteries")
         result = await submit(manager, result, "batteries", {"battery_slot": "0"})
@@ -271,6 +274,8 @@ async def test_storage_source_can_only_be_used_once(hass, household):
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert entry.options[SETTINGS]["ev_energy_source"] == identity
         assert inputs.snapshot(entry.options)["energy"]["ev_w"] == -800
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def test_data_status_and_temperature_fallback(hass, household):

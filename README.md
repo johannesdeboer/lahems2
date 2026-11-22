@@ -101,9 +101,11 @@ interpretation of future values to the planner.
 
 After setting up the integration, select **LAHEMS2** in the Home Assistant
 sidebar. The panel shows current household power, the heating proposal,
-EV status, and any inputs that need attention. Under **Accepted EV schedule**,
-choose the next 6 or 24 hours to see 15-minute charging and discharging targets
-in your Home Assistant time zone. The totals cover published intervals only.
+EV status, and any inputs that need attention. The **Accepted EV schedule**
+chart shows charging above zero and discharging below it. Choose 6 or 24
+hours, then hover, tap, or use the arrow keys to inspect an individual
+quarter-hour in your Home Assistant time zone. Blank intervals have no
+published target. The totals cover published intervals only.
 Use **Configure LAHEMS2** to bind a schedule source and other inputs.
 
 ## View Actual and Proposed

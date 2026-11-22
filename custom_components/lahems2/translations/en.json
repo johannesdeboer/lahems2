@@ -86,9 +86,12 @@
           "discharge_limit": "Discharge limit (W)",
           "reserve": "Minimum reserve (%)",
           "power_sign": "Power sign convention",
-          "controller": "Battery controller",
+          "controller": "Battery controller name",
           "add_another": "Add another battery",
           "remove_battery": "Remove this battery"
+        },
+        "data_description": {
+          "controller": "Enter the name of the system that decides when this battery charges or discharges, for example Manufacturer battery controller or Home Assistant automation."
         }
       },
       "review": {
@@ -196,9 +199,12 @@
           "discharge_limit": "Discharge limit (W)",
           "reserve": "Minimum reserve (%)",
           "power_sign": "Power sign convention",
-          "controller": "Battery controller",
+          "controller": "Battery controller name",
           "add_another": "Add another battery",
           "remove_battery": "Remove this battery"
+        },
+        "data_description": {
+          "controller": "Enter the name of the system that decides when this battery charges or discharges, for example Manufacturer battery controller or Home Assistant automation."
         }
       },
       "review": {

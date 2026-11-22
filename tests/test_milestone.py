@@ -332,7 +332,7 @@ async def test_shadow_plan_reads_live_sources_and_stops_at_missing_quarter(hass,
 async def test_pellet_stove_monitors_multiple_room_sources_without_switch(hass, household):
     inputs = Inputs(hass)
     stock = "sensor.pellet_hopper"
-    hass.states.async_set(stock, "25", {"unit_of_measurement": "%"})
+    hass.states.async_set(stock, "unavailable", {"unit_of_measurement": "%"})
     entry = MockConfigEntry(domain=DOMAIN, data={
         BINDINGS: {
             PRIMARY: inputs.bind(UNASSIGNED),
@@ -354,13 +354,18 @@ async def test_pellet_stove_monitors_multiple_room_sources_without_switch(hass, 
     assert entry.options[BINDINGS]["thermostat"] == entry.data[BINDINGS]["thermostat"]
     await hass.async_block_till_done()
     entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_pellet_stove")
+    assert hass.states.get(entity_id).state == "Stock unknown"
+    hass.states.async_set(stock, "25", {"unit_of_measurement": "%"})
+    await hass.async_block_till_done()
     assert hass.states.get(entity_id).attributes["stock_kg"] == 3
     assert len(hass.states.get(entity_id).attributes["rooms"]) == 3
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_pellet_stove")})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}_pellet_stove"), entry.entry_id,
+    )
     assert device.name == "Pellet stove"
     hass.states.async_set(stock, "0", {"unit_of_measurement": "%"})
     await hass.async_block_till_done()
-    assert hass.states.get(entity_id).state == "Out of pellets"
+    assert hass.states.get(entity_id).state == "Stock estimate: empty"
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 

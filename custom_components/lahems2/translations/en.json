@@ -285,12 +285,12 @@
       },
       "pellet_stove": {
         "title": "Pellet stove",
-        "description": "Link the thermostats and temperature sensors in the rooms heated by the stove. Stock monitoring works without a heat-request switch.",
+        "description": "Link the thermostats and temperature sensors in the rooms heated by the stove. The fuel estimate and heat-request switch are optional.",
         "data": {
           "pellet_enabled": "Enable pellet stove monitoring",
           "pellet_room_temperatures": "Room temperature sensors",
           "pellet_room_thermostats": "Room thermostats",
-          "pellet_stock": "Hopper level or stock estimate",
+          "pellet_stock": "Pellet stock estimate (optional)",
           "pellet_hopper_capacity_kg": "Full hopper capacity (kg)",
           "pellet_heat_request": "Heat request switch (optional, read-only)",
           "pellet_serves_forecast_load": "Allow the stove to replace the configured heat pump forecast load",
@@ -300,7 +300,7 @@
           "heat_pump_cop": "Assumed heat pump COP"
         },
         "data_description": {
-          "pellet_stock": "Choose a sensor or Number helper in kg or percent. For percent, also enter the full hopper capacity.",
+          "pellet_stock": "For a stove without a hopper sensor, use a Number helper in kg and update it when you check the hopper. Leave blank if stock is unknown. Percent estimates also require full hopper capacity.",
           "pellet_serves_forecast_load": "Enable only if the selected Heat pump electrical demand forecast describes zones the stove can actually heat.",
           "pellet_useful_heat_kwh_per_kg": "Enter the useful heat after stove losses. Use the fuel specification and stove efficiency.",
           "heat_pump_cop": "Heat delivered divided by electricity used. Use a representative value for this forecast."
@@ -347,7 +347,7 @@
         "name": "Proposed"
       },
       "pellet_stove": {
-        "name": "Fuel status"
+        "name": "Stock estimate"
       }
     }
   }

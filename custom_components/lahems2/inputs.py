@@ -269,7 +269,7 @@ class Inputs:
         if prefs.get("pellet_enabled"):
             fuel = stock_kg(readings[PELLET_ROLES["pellet_stock"].label], prefs.get("pellet_hopper_capacity_kg"))
             pellet = {
-                "status": "Stock unknown" if fuel is None else "Out of pellets" if fuel == 0 else "Pellets available",
+                "status": "Stock unknown" if fuel is None else "Stock estimate: empty" if fuel == 0 else "Stock estimate available",
                 "stock_kg": fuel,
                 "rooms": {
                     label: {

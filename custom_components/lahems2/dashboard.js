@@ -233,7 +233,7 @@ class Lahems2Overview extends HTMLElement {
         element("h2", "Pellet stove"),
         element("p", pellet.status, "detail"),
         this.metrics([
-          ["Fuel stock", this.quantity(pellet.stock_kg, "kg")],
+          ["Estimated fuel stock", this.quantity(pellet.stock_kg, "kg")],
           ...rooms.map((room) => [
             room.name,
             room.comfort_target != null ? `Setpoint · ${this.quantity(room.comfort_target, room.comfort_target_unit || "")}`

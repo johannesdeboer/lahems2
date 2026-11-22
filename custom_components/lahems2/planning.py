@@ -49,7 +49,7 @@ def propose(snapshot: dict, settings: dict, currency: str) -> tuple[str, dict]:
     elif pellet and not pellet["stock_kg"]:
         state = "Heat pump is the baseline"
         reason = (
-            "The pellet stove is out of pellets. Check the stove room temperature."
+            "The recorded pellet stock estimate is zero. Check the stove room temperature."
             if pellet["stock_kg"] == 0 else "Pellet stock is unknown."
         )
     elif pellet and not any(reading["usable"] for reading in pellet["rooms"].values()):

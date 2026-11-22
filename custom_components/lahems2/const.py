@@ -75,7 +75,7 @@ PLAN_ROLES = {
 PELLET_ROLES = {
     "pellet_room_temperatures": Role("Pellet stove room temperature", device_class=TEMPERATURE, multiple=True, freshness_setting=TEMPERATURE_MAX_AGE),
     "pellet_room_thermostats": Role("Pellet stove room thermostat", "climate", multiple=True, numeric=False),
-    "pellet_stock": Role("Pellet stock", ("sensor", "input_number")),
+    "pellet_stock": Role("Pellet stock estimate", ("sensor", "input_number")),
 }
 PELLET_NUMBERS = {
     "pellet_hopper_capacity_kg": 0.01,

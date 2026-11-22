@@ -28,7 +28,7 @@ class Pellet:
 
     @classmethod
     def from_settings(cls, stock, settings):
-        """Use measured stock and explicitly supplied heat conversion parameters."""
+        """Use the stock estimate and explicitly supplied heat conversion parameters."""
         values = tuple(numeric_value(settings.get(key)) for key in (
             "pellet_price_per_kg", "pellet_useful_heat_kwh_per_kg",
             "pellet_max_output_kw", "heat_pump_cop",

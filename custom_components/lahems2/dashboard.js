@@ -115,6 +115,9 @@ class Lahems2Overview extends HTMLElement {
       section.append(element("h2", label), this.cards[key]);
       cards.append(section);
     }
+    this.pelletCard = element("section");
+    this.pelletCard.hidden = true;
+    cards.append(this.pelletCard);
     const schedule = element("section", undefined, "schedule");
     const scheduleHead = element("div", undefined, "schedule-head");
     this.horizon = element("select");
@@ -217,10 +220,28 @@ class Lahems2Overview extends HTMLElement {
       this.metrics([
         ["Indoor temperature", this.quantity(heat.indoor_temperature, heat.indoor_temperature_unit || "")],
         ["Setpoint", this.quantity(heat.comfort_target, heat.comfort_target_unit || "")],
+        ["Heat pump electrical power", this.quantity(heat.heat_pump_power_w == null ? null : heat.heat_pump_power_w / 1000, "kW")],
       ]),
       element("p", `Proposal: ${usableState(proposed, "Unavailable")}`),
       element("p", proposed?.attributes.reason || "", "detail"),
     );
+    const pellet = heat.pellet_stove;
+    this.pelletCard.hidden = !pellet;
+    if (pellet) {
+      const rooms = Object.values(pellet.rooms);
+      this.pelletCard.replaceChildren(
+        element("h2", "Pellet stove"),
+        element("p", pellet.status, "detail"),
+        this.metrics([
+          ["Estimated fuel stock", this.quantity(pellet.stock_kg, "kg")],
+          ...rooms.map((room) => [
+            room.name,
+            room.comfort_target != null ? `Setpoint · ${this.quantity(room.comfort_target, room.comfort_target_unit || "")}`
+              : room.usable ? this.quantity(room.reading, room.unit || "") : room.status,
+          ]),
+        ]),
+      );
+    }
     this.cards.ev.replaceChildren(this.metrics([
       ["Connection", power.ev_connected === true ? "Connected" : power.ev_connected === false ? "Disconnected" : "Unknown"],
       ["State of charge", this.quantity(power.ev_soc_percent, "%")],
@@ -355,7 +376,7 @@ class Lahems2Overview extends HTMLElement {
     if (key === this.shadowPlanKey) return;
     this.shadowPlanKey = key;
     this.shadowPlan.replaceChildren(
-      element("h2", "Battery plan comparison"),
+      element("h2", "Shadow plan comparison"),
       element("p", plan.reason || plan.status, "detail"),
     );
     if (plan.baseline_cost == null) return;
@@ -364,6 +385,7 @@ class Lahems2Overview extends HTMLElement {
       ["Baseline cost", this.quantity(plan.baseline_cost, plan.currency)],
       ["Proposed cost", this.quantity(plan.proposed_cost, plan.currency)],
       ["Estimated savings", this.quantity(savings, plan.currency)],
+      ...(plan.pellet_cost == null ? [] : [["Proposed pellet cost", this.quantity(plan.pellet_cost, plan.currency)]]),
     ]));
     const intervals = plan.intervals;
     if (!intervals?.length) return;
@@ -373,7 +395,7 @@ class Lahems2Overview extends HTMLElement {
       "detail",
     ));
     const select = element("select");
-    select.setAttribute("aria-label", "Inspect a battery plan interval");
+    select.setAttribute("aria-label", "Inspect a planning interval");
     const details = element("div");
     for (const interval of intervals) {
       const option = element("option", this.clock.format(Date.parse(interval.start)));
@@ -388,6 +410,14 @@ class Lahems2Overview extends HTMLElement {
         ["Baseline grid", this.flow(interval.baseline_grid_w, "Importing", "Exporting")],
         ["Proposed grid", this.flow(interval.proposed_grid_w, "Importing", "Exporting")],
         ["Fixed EV power", this.flow(interval.ev_power_w, "Charging", "Discharging")],
+        ...(interval.heat_pump_baseline_w == null ? [] : [
+          ["Baseline heat pump", this.quantity(interval.heat_pump_baseline_w / 1000, "kW")],
+          ["Proposed heat pump", this.quantity(interval.heat_pump_proposed_w / 1000, "kW")],
+        ]),
+        ...(interval.pellet_remaining_kg == null ? [] : [
+          ["Pellets used", this.quantity(interval.pellet_used_kg, "kg")],
+          ["Projected pellet stock", this.quantity(interval.pellet_remaining_kg, "kg")],
+        ]),
         ...interval.battery_power_w.map((power, index) => [
           `Home battery ${index + 1}`,
           `${this.flow(power, "Charge", "Discharge")} · ${this.quantity(interval.battery_end_soc_percent[index], "%")} at end`,

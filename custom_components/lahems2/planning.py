@@ -25,6 +25,7 @@ def propose(snapshot: dict, settings: dict, currency: str) -> tuple[str, dict]:
     thermostat = roles[ROLES["thermostat"].label]
     tariff = roles[ROLES["import_price"].label]
     relay = roles[ROLES[RELAY].label]
+    pellet = snapshot.get("pellet_stove")
     threshold = numeric_value(settings.get("pellet_price_threshold"))
     indoor_value = _value(indoor) if indoor else None
     target = numeric_value(thermostat.get("comfort_target"))
@@ -45,9 +46,18 @@ def propose(snapshot: dict, settings: dict, currency: str) -> tuple[str, dict]:
     elif thermostat["reading"] not in {"heat", "heat_cool", "auto"}:
         state = "Review thermostat mode"
         reason = "The room is below the setpoint and the thermostat is outside a heating-capable mode."
-    elif threshold is None or not relay["usable"]:
+    elif pellet and not pellet["stock_kg"]:
         state = "Heat pump is the baseline"
-        reason = "The room is below the setpoint. Pellet comparison needs a readable relay and configured tariff threshold."
+        reason = (
+            "The recorded pellet stock estimate is zero. Check the stove room temperature."
+            if pellet["stock_kg"] == 0 else "Pellet stock is unknown."
+        )
+    elif pellet and not any(reading["usable"] for reading in pellet["rooms"].values()):
+        state = "Heat pump is the baseline"
+        reason = "Pellet comparison needs a usable temperature sensor or thermostat from the stove room."
+    elif threshold is None or (not pellet and not relay["usable"]):
+        state = "Heat pump is the baseline"
+        reason = "The room is below the setpoint. Pellet comparison needs a configured tariff threshold and available pellet heat."
     elif price is None or tariff["unit"] not in tariff_units:
         state = "Waiting for import tariff"
         reason = "Pellet comparison needs a usable import tariff per kWh in the threshold's currency."

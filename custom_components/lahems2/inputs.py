@@ -17,6 +17,7 @@ from .const import (
     BINDINGS,
     ENERGY_ROLES,
     FRESHNESS_DEFAULTS,
+    PELLET_ROLES,
     PRIMARY,
     RELAY,
     ROLES,
@@ -26,6 +27,7 @@ from .const import (
 from .energy import QUARTER, energy_snapshot
 from .model import active_temperature, numeric_value
 from .shadow_plan import Battery, QuarterInput, forecast
+from .pellet import Pellet, stock_kg
 
 _INDOOR = {"indoor", "room", "living", "bedroom", "kitchen", "hall", "ambient", "lounge"}
 _EQUIPMENT = {
@@ -231,7 +233,7 @@ class Inputs:
                 else "Available"
             )
             result["usable"] = True
-            if key == "thermostat":
+            if key in {"thermostat", "pellet_room_thermostats"}:
                 result["comfort_target"] = state.attributes.get("temperature")
                 result["comfort_target_unit"] = state.attributes.get(
                     "temperature_unit", self.hass.config.units.temperature_unit
@@ -248,7 +250,9 @@ class Inputs:
                 configured = bindings.get(key, [])
                 for index, binding in enumerate(configured or [None], 1):
                     label = f"{role.label} {index}" if configured else role.label
-                    readings[label] = self.reading(key, role, binding)
+                    readings[label] = self.reading(
+                        key, role, binding, max_age_minutes=prefs.get(role.freshness_setting),
+                    )
             else:
                 readings[role.label] = self.reading(
                     key, role, bindings.get(key), max_age_minutes=prefs.get(role.freshness_setting)
@@ -261,11 +265,28 @@ class Inputs:
         active = active_temperature(readings[ROLES[PRIMARY].label], readings[ROLES[BACKUP].label])
         schedule = readings[ROLES["ev_schedule"].label]
         schedule_state = self.hass.states.get(schedule["entity_id"]) if schedule["usable"] else None
+        pellet = None
+        if prefs.get("pellet_enabled"):
+            fuel = stock_kg(readings[PELLET_ROLES["pellet_stock"].label], prefs.get("pellet_hopper_capacity_kg"))
+            pellet = {
+                "status": "Stock unknown" if fuel is None else "Stock estimate: empty" if fuel == 0 else "Stock estimate available",
+                "stock_kg": fuel,
+                "rooms": {
+                    label: {
+                        **reading,
+                        "name": candidate.name if (candidate := self.candidate(reading["entity_id"])) else reading["entity_id"],
+                    } for label, reading in readings.items()
+                    if label.startswith(("Pellet stove room temperature", "Pellet stove room thermostat"))
+                    and reading["entity_id"]
+                },
+                "heat_request": readings[ROLES[RELAY].label]["reading"],
+            }
         return {
             "energy": energy_snapshot(
                 readings, profile, schedule_state.attributes.get("intervals") if schedule_state else None, utcnow()
             ),
             "roles": readings,
+            "pellet_stove": pellet,
             "active_indoor_temperature": active,
             "active_indoor_source": (
                 "Primary" if active is readings[ROLES[PRIMARY].label]
@@ -295,6 +316,8 @@ class Inputs:
             return forecast(state.attributes.get("intervals"), field, nonnegative=power)
 
         demand = read(bindings["demand_forecast"], "power_w", power=True)
+        heat_pump_binding = bindings.get("heat_pump_demand_forecast")
+        heat_pump = read(heat_pump_binding, "power_w", power=True) if heat_pump_binding else {}
         tariffs = []
         for key in ("import", "export"):
             binding = bindings.get(f"{key}_tariff_forecast") or bindings.get(f"{key}_price")
@@ -305,8 +328,16 @@ class Inputs:
         solar = [read(binding, "power_w", power=True) for binding in solar_sources]
 
         energy = snapshot["energy"]
+        settings = profile.get(SETTINGS, {})
+        stove = snapshot["pellet_stove"]
+        pellet = (
+            Pellet.from_settings(stove["stock_kg"], settings)
+            if stove and settings.get("pellet_serves_forecast_load")
+            and any(reading["usable"] for reading in stove["rooms"].values())
+            else None
+        )
         batteries = tuple(Battery.from_readings(battery) for battery in energy["batteries"])
-        if not batteries or None in batteries:
+        if None in batteries or (not batteries and not pellet):
             return "Waiting for battery inputs", "Stationary batteries need confirmed limits and a usable charge level at or above reserve.", None
         has_ev = any(key in bindings for key in ("ev_power", "ev_connected", "ev_schedule"))
         if has_ev and energy["ev_connected"] is None:
@@ -326,12 +357,16 @@ class Inputs:
             ev_w = ev.get(quarter) if needs_ev else 0
             if None in [load, *prices, *pv, ev_w]:
                 break
-            slots.append(QuarterInput(quarter, load, sum(pv), ev_w, *prices))
+            heat_w = heat_pump.get(quarter)
+            slots.append(QuarterInput(
+                quarter, load, sum(pv), ev_w, *prices,
+                heat_pump_w=heat_w if heat_w is not None and heat_w <= load else None,
+            ))
         if not slots:
             return "Waiting for forecasts", "The next full quarter needs demand and buy/sell prices, plus PV or an accepted EV schedule when applicable.", None
-        efficiency = profile.get(SETTINGS, {}).get("planning_efficiency_percent", 90) / 100
+        efficiency = settings.get("planning_efficiency_percent", 90) / 100
         return "Calculating", "Comparing future quarters in Shadow Mode.", (
-            tuple(slots), batteries, currency, efficiency, energy["import_limit_w"], energy["export_limit_w"],
+            tuple(slots), batteries, currency, efficiency, energy["import_limit_w"], energy["export_limit_w"], pellet,
         )
 
 

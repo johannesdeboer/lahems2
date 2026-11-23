@@ -44,8 +44,8 @@ Start the same setup wizard from **Add integration**.
 ### Edit one section or reuse Home Assistant Energy
 
 Open **Settings → Devices & services → LAHEMS2 → Configure**. Choose
-**Temperature & comfort**, **Heating**, **Grid & tariffs**, **Solar**, **EV**,
-or **Home batteries**. Saving one section preserves the other sections. To
+**Temperature & comfort**, **Heating**, **Pellet stove**, **Grid & tariffs**,
+**Solar**, **EV**, or **Home batteries**. Saving one section preserves the other sections. To
 change or remove a battery, select that battery in **Home batteries**.
 
 - **Use Home Assistant Energy sources** previews proposed net grid power,
@@ -196,9 +196,39 @@ configured grid limits. It models charge/discharge losses using a configurable
 round-trip efficiency (90% by default) and preserves starting battery energy
 at the end. Battery charge during EV export is limited to independent PV
 surplus. Batteries are planned in configured order with discrete energy
-levels. This comparison keeps the demand forecast fixed, including heating.
+levels. The battery-only comparison keeps the demand forecast fixed, including heating.
 LAHEMS2 only reads the Home Assistant entities and excludes proposed intervals
 from Recorder attributes.
+
+### Include the heat pump and pellet stove in Shadow Mode
+
+The **Heating** card shows measured electrical power when you link the heat
+pump meter. Its future electricity use is part of the household demand
+forecast. For quarter-hour detail, add a **Heat pump electrical demand
+forecast** under **Configure → Shadow planning**. This forecast is a subset of
+household demand. It uses the same `power_w` format.
+
+In **Configure → Pellet stove**, attach the thermostats and temperature sensors
+in the rooms the stove can heat. The stove appears as its own Home Assistant
+device and dashboard card. If your stove has no fuel sensor, leave stock blank
+or link a Home Assistant Number helper in kilograms and update your estimate
+when you refill or check the hopper. A source in percent needs the full hopper
+size in kilograms. Zero is an empty stock estimate. A missing reading means
+stock is unknown. A stove that is off or has no heat request gives no evidence
+of remaining fuel.
+
+To compare pellet heat, enter the fuel price, useful heat per kilogram, stove
+thermal output and representative heat-pump COP. Enable stove replacement
+only if the heat-pump forecast covers the load the pellet stove can actually
+serve. The proposal uses the reported stock estimate in its calculation and stops
+allocating pellets when it cannot cover another interval. Heater load outside
+the selected forecast stays in the household demand.
+
+The proposal shows heat-pump power, pellets used, projected stock and pellet
+cost. Projected consumption does not change the Home Assistant helper.
+Battery and accepted EV power enter the same net household balance.
+V2G Liberty owns its schedule. The planner does not predict room temperatures,
+model stove start-up or send device commands.
 
 See the [energy planning roadmap](docs/energy-planning-roadmap.md) for
 stationary battery optimisation, bidirectional EVs and external controllers.

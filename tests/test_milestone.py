@@ -329,6 +329,46 @@ async def test_shadow_plan_reads_live_sources_and_stops_at_missing_quarter(hass,
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
+async def test_pellet_stove_monitors_multiple_room_sources_without_switch(hass, household):
+    inputs = Inputs(hass)
+    stock = "sensor.pellet_hopper"
+    hass.states.async_set(stock, "unavailable", {"unit_of_measurement": "%"})
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        BINDINGS: {
+            PRIMARY: inputs.bind(UNASSIGNED),
+            "thermostat": inputs.bind(THERMOSTAT),
+            "grid_meter": inputs.bind(GRID),
+        },
+        SETTINGS: {},
+        BATTERIES: [],
+    })
+    entry.add_to_hass(hass)
+    manager = hass.config_entries.options
+    result = await choose(manager, entry, "pellet_stove")
+    result = await submit(manager, result, "pellet_stove", {
+        "pellet_enabled": True, "pellet_room_temperatures": [UNASSIGNED, household[1]["living_room_air"]],
+        "pellet_room_thermostats": [THERMOSTAT], "pellet_stock": stock, "pellet_hopper_capacity_kg": 12,
+    })
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert RELAY not in entry.options[BINDINGS]
+    assert entry.options[BINDINGS]["thermostat"] == entry.data[BINDINGS]["thermostat"]
+    await hass.async_block_till_done()
+    entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_pellet_stove")
+    assert hass.states.get(entity_id).state == "Stock unknown"
+    hass.states.async_set(stock, "25", {"unit_of_measurement": "%"})
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).attributes["stock_kg"] == 3
+    assert len(hass.states.get(entity_id).attributes["rooms"]) == 3
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}_pellet_stove"), entry.entry_id,
+    )
+    assert device.name == "Pellet stove"
+    hass.states.async_set(stock, "0", {"unit_of_measurement": "%"})
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "Stock estimate: empty"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_data_status_and_temperature_fallback(hass, household):
     """Keep usable inputs when other roles go offline, move or disappear."""
     (living, bedroom), entities = household

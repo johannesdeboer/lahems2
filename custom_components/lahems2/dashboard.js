@@ -40,17 +40,49 @@ const STYLES = `
     background: var(--card-background-color, #fff);
     border: 1px solid var(--divider-color, #d3dfda); border-radius: 12px;
   }
-  .schedule { margin-top: 12px; }
+  .schedule, .shadow-plan { margin-top: 12px; }
   dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 12px; }
   dt { color: var(--secondary-text-color, #465753); }
   dd { margin: 2px 0 0; font-size: 17px; font-weight: 600; }
   .schedule-head { display: flex; flex-wrap: wrap; align-items: start; gap: 8px 16px; justify-content: space-between; }
   select { font: inherit; color: inherit; background: inherit; border: 1px solid var(--divider-color, #b2bfba); border-radius: 6px; padding: 6px; }
   .schedule dl { margin: 14px 0; }
-  .table { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top: 12px; }
-  td, th { text-align: start; padding: 8px 7px; border-bottom: 1px solid var(--divider-color, #d3dfda); }
-  td:last-child, th:last-child { text-align: end; white-space: nowrap; }
+  .shadow-plan dl { margin-block: 12px; }
+  .schedule-chart { margin-top: 14px; }
+  .chart-grid {
+    direction: ltr; display: grid; grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: 126px auto; gap: 4px 8px;
+    font-size: 12px; color: var(--secondary-text-color, #465753);
+    font-variant-numeric: tabular-nums;
+  }
+  .chart-scale { display: flex; flex-direction: column; justify-content: space-between; text-align: end; }
+  .chart-plot {
+    position: relative; border-block: 1px solid var(--divider-color, #d3dfda);
+    background: var(--secondary-background-color, var(--primary-background-color, #f2f5f3));
+    cursor: crosshair;
+  }
+  .chart-plot:focus-visible { outline: 2px solid var(--primary-color, #00796b); outline-offset: 3px; }
+  .chart-zero { position: absolute; inset: 50% 0 auto; border-top: 1px solid currentColor; }
+  .chart-bar { position: absolute; top: 50%; }
+  .charge { background: var(--energy-battery-in-color, #00897b); }
+  .discharge { background: var(--energy-battery-out-color, #d4622f); }
+  .chart-idle { background: currentColor; }
+  .chart-marker {
+    position: absolute; inset-block: 0; border-inline-start: 1px dashed currentColor;
+    pointer-events: none;
+  }
+  .chart-time { grid-column: 2; display: flex; justify-content: space-between; gap: 4px; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .chart-legend span::before {
+    content: ""; display: inline-block; width: 9px; height: 9px; margin-inline-end: 5px;
+    border-radius: 2px;
+  }
+  .chart-legend .legend-charge::before { background: var(--energy-battery-in-color, #00897b); }
+  .chart-legend .legend-discharge::before { background: var(--energy-battery-out-color, #d4622f); }
+  .chart-reading { min-height: 2.8em; margin-top: 4px; }
+  @media (max-width: 480px) {
+    .chart-time span:nth-child(even) { display: none; }
+  }
   .attention { margin-top: 12px; }
   ul { margin: 8px 0 0; padding-inline-start: 20px; }
 `;
@@ -99,8 +131,10 @@ class Lahems2Overview extends HTMLElement {
     scheduleHead.append(element("h2", "Accepted EV schedule"), this.horizon);
     this.schedule = element("div");
     schedule.append(scheduleHead, this.schedule);
+    this.shadowPlan = element("section", undefined, "shadow-plan");
+    this.shadowPlan.hidden = true;
     this.attention = element("section", undefined, "attention");
-    main.append(intro, cards, schedule, this.attention);
+    main.append(intro, cards, schedule, this.shadowPlan, this.attention);
     this.shadowRoot.append(style, header, main);
   }
 
@@ -138,8 +172,12 @@ class Lahems2Overview extends HTMLElement {
       timeZone: hass.config.time_zone, month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit", timeZoneName: "short",
     });
+    this.axisClock = new Intl.DateTimeFormat(language, {
+      timeZone: hass.config.time_zone, hour: "2-digit", minute: "2-digit",
+    });
     this.renderOverview();
     this.renderSchedule();
+    this.renderShadowPlan();
   }
 
   quantity(value, unit) {
@@ -200,10 +238,14 @@ class Lahems2Overview extends HTMLElement {
     const balance = this.sources.energy_balance;
     if (!this.clock) return;
     const state = usableState(balance, "Schedule source unavailable");
-    this.schedule.replaceChildren(element("p", state, "detail"));
     const windows = balance?.attributes.external_ev_schedule;
-    if (!Array.isArray(windows) || !windows.length) return;
     const now = Date.now();
+    const key = JSON.stringify([this.formatKey, this.hours, Math.floor(now / 60_000), state, windows]);
+    if (key === this.scheduleKey) return;
+    this.scheduleKey = key;
+    const hadFocus = this.shadowRoot.activeElement?.classList.contains("chart-plot");
+    this.schedule.replaceChildren(element("p", state, "detail"));
+    if (!Array.isArray(windows) || !windows.length) return;
     const until = now + this.hours * 3_600_000;
     const rows = [];
     let charge = 0;
@@ -230,27 +272,131 @@ class Lahems2Overview extends HTMLElement {
       ["Plan coverage", `${this.quantity(covered / 3_600_000, "h")} of ${this.hours} h`],
     ]));
     if (covered < until - now) {
-      this.schedule.append(element("p", "Times outside the listed intervals have no published power target.", "detail"));
+      this.schedule.append(element("p", "Blank intervals have no published power target.", "detail"));
     }
-    const table = element("table");
-    const head = table.createTHead().insertRow();
-    for (const label of ["Start", "End", "Scheduled power"]) {
-      const th = element("th", label);
-      th.scope = "col";
-      head.append(th);
-    }
-    const body = table.createTBody();
+    this.renderScheduleChart(rows, now, until, hadFocus);
+  }
+
+  renderScheduleChart(rows, start, end, restoreFocus) {
+    const chart = element("div", undefined, "schedule-chart");
+    const grid = element("div", undefined, "chart-grid");
+    const scale = Math.max(1, Math.ceil(Math.max(...rows.map((row) => Math.abs(row.power))) / 1000));
+    const labels = element("div", undefined, "chart-scale");
+    for (const value of [scale, 0, -scale]) labels.append(element("span", this.quantity(value, "kW")));
+    const plot = element("div", undefined, "chart-plot");
+    plot.tabIndex = 0;
+    plot.setAttribute("role", "group");
+    plot.setAttribute("aria-label", "Scheduled EV power. Use the arrow keys to inspect quarter-hour targets.");
+    plot.append(element("span", undefined, "chart-zero"));
+    const duration = end - start;
+    const position = (time) => (time - start) / duration * 100;
     for (const row of rows) {
-      const tr = body.insertRow();
-      tr.append(
-        element("td", this.clock.format(row.start)),
-        element("td", this.clock.format(row.end)),
-        element("td", this.flow(row.power, "Charge", "Discharge")),
-      );
+      const kind = row.power > 0 ? "charge" : row.power < 0 ? "discharge" : "chart-idle";
+      const bar = element("span", undefined, `chart-bar ${kind}`);
+      const height = Math.abs(row.power) / (scale * 1000) * 50;
+      const left = position(Math.max(row.start, start));
+      bar.style.left = `${left}%`;
+      bar.style.width = `${position(Math.min(row.end, end)) - left}%`;
+      bar.style.height = row.power === 0 ? "2px" : `${height}%`;
+      bar.style.top = `${50 - (row.power > 0 ? height : 0)}%`;
+      plot.append(bar);
     }
-    const container = element("div", undefined, "table");
-    container.append(table);
-    this.schedule.append(container);
+    const marker = element("span", undefined, "chart-marker");
+    plot.append(marker);
+    const ticks = element("div", undefined, "chart-time");
+    for (let i = 0; i <= 4; i++) {
+      ticks.append(element("span", this.axisClock.format(start + i * duration / 4)));
+    }
+    const legend = element("div", undefined, "chart-legend detail");
+    legend.append(element("span", "Charging", "legend-charge"), element("span", "Discharging", "legend-discharge"));
+    const reading = element("p", undefined, "chart-reading");
+    reading.setAttribute("role", "status");
+    const quarter = 15 * 60_000;
+    const inspect = (time) => {
+      this.inspectedScheduleTime = Math.max(start, Math.min(end - 1, time));
+      const row = rows.find(({start, end}) => start <= this.inspectedScheduleTime && this.inspectedScheduleTime < end);
+      const from = row?.start ?? Math.floor(this.inspectedScheduleTime / quarter) * quarter;
+      const to = row?.end ?? from + quarter;
+      marker.style.left = `${position(Math.max(start, from))}%`;
+      const power = row ? this.flow(row.power, "Charge", "Discharge") : "No published target";
+      const detail = `${this.clock.format(from)} – ${this.axisClock.format(to)} · ${power}`;
+      if (reading.textContent !== detail) reading.textContent = detail;
+    };
+    const inspectPointer = (event) => {
+      const bounds = plot.getBoundingClientRect();
+      if (bounds.width) inspect(start + (event.clientX - bounds.left) / bounds.width * duration);
+    };
+    plot.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "mouse") inspectPointer(event);
+    });
+    plot.addEventListener("click", inspectPointer);
+    plot.addEventListener("keydown", (event) => {
+      const current = this.inspectedScheduleTime;
+      const times = {
+        ArrowLeft: current - quarter, ArrowRight: current + quarter,
+        Home: start, End: end - 1,
+      };
+      if (!Object.hasOwn(times, event.key)) return;
+      event.preventDefault();
+      inspect(times[event.key]);
+    });
+    inspect(this.inspectedScheduleTime ?? Math.max(start, rows[0].start));
+    grid.append(labels, plot, ticks);
+    chart.append(grid, legend, reading);
+    this.schedule.append(chart);
+    if (restoreFocus) plot.focus({preventScroll: true});
+  }
+
+  renderShadowPlan() {
+    const plan = this.sources.energy_balance?.attributes.shadow_plan;
+    this.shadowPlan.hidden = !plan;
+    if (!plan) return;
+    const key = JSON.stringify([this.formatKey, plan]);
+    if (key === this.shadowPlanKey) return;
+    this.shadowPlanKey = key;
+    this.shadowPlan.replaceChildren(
+      element("h2", "Battery plan comparison"),
+      element("p", plan.reason || plan.status, "detail"),
+    );
+    if (plan.baseline_cost == null) return;
+    const savings = plan.proposed_cost == null ? null : plan.baseline_cost - plan.proposed_cost;
+    this.shadowPlan.append(this.metrics([
+      ["Baseline cost", this.quantity(plan.baseline_cost, plan.currency)],
+      ["Proposed cost", this.quantity(plan.proposed_cost, plan.currency)],
+      ["Estimated savings", this.quantity(savings, plan.currency)],
+    ]));
+    const intervals = plan.intervals;
+    if (!intervals?.length) return;
+    this.shadowPlan.append(element(
+      "p",
+      `${this.quantity(intervals.length / 4, "h")} of forecast coverage · ${this.quantity(plan.round_trip_efficiency_percent, "%")} round-trip efficiency`,
+      "detail",
+    ));
+    const select = element("select");
+    select.setAttribute("aria-label", "Inspect a battery plan interval");
+    const details = element("div");
+    for (const interval of intervals) {
+      const option = element("option", this.clock.format(Date.parse(interval.start)));
+      option.value = interval.start;
+      select.append(option);
+    }
+    if (intervals.some((interval) => interval.start === this.inspectedPlanStart)) select.value = this.inspectedPlanStart;
+    const inspect = () => {
+      const interval = intervals[select.selectedIndex];
+      this.inspectedPlanStart = interval.start;
+      details.replaceChildren(this.metrics([
+        ["Baseline grid", this.flow(interval.baseline_grid_w, "Importing", "Exporting")],
+        ["Proposed grid", this.flow(interval.proposed_grid_w, "Importing", "Exporting")],
+        ["Fixed EV power", this.flow(interval.ev_power_w, "Charging", "Discharging")],
+        ...interval.battery_power_w.map((power, index) => [
+          `Home battery ${index + 1}`,
+          `${this.flow(power, "Charge", "Discharge")} · ${this.quantity(interval.battery_end_soc_percent[index], "%")} at end`,
+        ]),
+      ]));
+    };
+    select.addEventListener("change", inspect);
+    inspect();
+    this.shadowPlan.append(select, details);
   }
 }
 

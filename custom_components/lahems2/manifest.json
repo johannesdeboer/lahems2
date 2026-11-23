@@ -11,5 +11,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/johannesdeboer/lahems2/issues",
   "single_config_entry": true,
-  "version": "0.3.3"
+  "version": "0.3.4"
 }

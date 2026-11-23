@@ -10,10 +10,14 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.util.dt import utcnow
 
 from .const import AREA, MODE, ROLES, SETTINGS
 from .inputs import Inputs
 from .planning import propose
+from .shadow_plan import compare
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -34,12 +38,15 @@ class SnapshotCoordinator(DataUpdateCoordinator[dict]):
     """Refresh a shared snapshot when inputs change or become stale."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        super().__init__(hass, logging.getLogger(__name__), name="LAHEMS2", config_entry=entry)
+        super().__init__(hass, _LOGGER, name="LAHEMS2", config_entry=entry)
         self.profile = entry.options or entry.data
         self._entry = entry
         self._inputs = Inputs(hass)
         self._watched_ids = set()
         self._stop_watching = None
+        self._plan_request = None
+        self._plan_task = None
+        self._plan = {}
 
     @callback
     def start(self) -> None:
@@ -69,11 +76,38 @@ class SnapshotCoordinator(DataUpdateCoordinator[dict]):
 
         area = self.profile.get(AREA)
         proposal = propose(snapshot, self.profile.get(SETTINGS, {}), self.hass.config.currency)
+        status, reason, request = self._inputs.planning_inputs(
+            self.profile, snapshot, utcnow(), self.hass.config.currency,
+        )
+        if request is None or request != self._plan_request:
+            self._plan = {"status": status, "reason": reason}
+            self._plan_request = request
+            if request is not None and self._plan_task is None:
+                self._plan_task = self._entry.async_create_background_task(
+                    self.hass, self._calculate_plan(), "LAHEMS2 shadow plan", eager_start=False,
+                )
         self.async_set_updated_data({
             "preferred_area": self._inputs.area_name(area) if area else None,
             "snapshot": snapshot,
             "proposal": proposal,
+            "shadow_plan": self._plan,
         })
+
+    async def _calculate_plan(self):
+        """Coalesce updates and discard results for superseded input sets."""
+        try:
+            while (request := self._plan_request) is not None:
+                try:
+                    result = await self.hass.async_add_executor_job(compare, *request)
+                except Exception:
+                    _LOGGER.exception("Unable to calculate the LAHEMS2 shadow plan")
+                    result = {"status": "Unavailable", "reason": "Could not calculate the proposal."}
+                if request == self._plan_request:
+                    self._plan = result
+                    self.async_set_updated_data({**self.data, "shadow_plan": result})
+                    return
+        finally:
+            self._plan_task = None
 
 
 class SnapshotSensor(CoordinatorEntity[SnapshotCoordinator], SensorEntity):
@@ -174,7 +208,7 @@ class EnergyBalance(SnapshotSensor):
 
     _attr_translation_key = "energy_balance"
     _attr_icon = "mdi:transmission-tower"
-    _unrecorded_attributes = frozenset({"external_ev_schedule", "batteries"})
+    _unrecorded_attributes = frozenset({"external_ev_schedule", "batteries", "shadow_plan"})
 
     @property
     def native_value(self) -> str:
@@ -182,4 +216,5 @@ class EnergyBalance(SnapshotSensor):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return self.coordinator.data["snapshot"]["energy"]
+        data = self.coordinator.data
+        return {**data["snapshot"]["energy"], "shadow_plan": data["shadow_plan"]}

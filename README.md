@@ -68,6 +68,18 @@ are not imported by this setup flow.
 
 ## Read Data Status
 
+The **LAHEMS2** sidebar shows why each input needs attention. For a stale
+reading, it shows the source entity, last reported value and time, and the
+configured age limit. Home Assistant can report an unchanged value again,
+so staleness is based on the last report rather than the last value change.
+
+Under **Settings → Devices & services → LAHEMS2 → Devices**, the integration
+groups configured readings under their equipment or purpose. The Pellet stove
+device can show the room temperatures, thermostats, fuel estimate and heat
+request. Other groups include the heat pump, electricity grid, solar, EV,
+planning forecasts and each home battery. These are read-only views of the
+selected Home Assistant entities. Their attributes identify the source.
+
 Open **Data Status** from the integration's entities. Its attributes show each
 role's selected entity, latest reading, unit, availability and whether that
 reading can be used. Inspect the complete attributes under **Developer Tools →

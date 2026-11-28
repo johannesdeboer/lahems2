@@ -369,6 +369,54 @@ async def test_pellet_stove_monitors_multiple_room_sources_without_switch(hass, 
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
+async def test_configured_sources_are_read_only_device_entities(hass, household):
+    inputs = Inputs(hass)
+    indoor = household[1]["living_room_air"]
+    entry = MockConfigEntry(domain=DOMAIN, data={
+        BINDINGS: {
+            PRIMARY: inputs.bind(indoor),
+            "thermostat": inputs.bind(THERMOSTAT),
+            "grid_meter": inputs.bind(GRID),
+            "ev_power": inputs.bind("sensor.ev_power"),
+            RELAY: inputs.bind(RELAY_ENTITY),
+            "pellet_room_temperatures": [inputs.bind(indoor)],
+        },
+        BATTERIES: [{BINDINGS: {
+            "battery_power": inputs.bind("sensor.battery_power"),
+            "battery_soc": inputs.bind("sensor.battery_state_of_charge"),
+        }}],
+        SETTINGS: {"pellet_enabled": True},
+    })
+    entry.add_to_hass(hass)
+    with patch.object(type(hass.services), "async_call", autospec=True) as service:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        devices = dr.async_get(hass)
+        registry = er.async_get(hass)
+        readings = {}
+        for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+            state = hass.states.get(item.entity_id)
+            if state and "source_entity_id" in state.attributes:
+                group = devices.async_get(item.device_id).name
+                readings[group, state.attributes["source_entity_id"]] = state
+        assert readings["Pellet stove", RELAY_ENTITY].state == "off"
+        assert float(readings["Pellet stove", indoor].state) == 19.5
+        assert readings["Heat pump", THERMOSTAT].attributes["comfort_target"] == 21
+        assert float(readings["Battery 1", "sensor.battery_state_of_charge"].state) == 64
+        assert float(readings["Electric vehicle", "sensor.ev_power"].state) == 800
+        relay_mirror = readings["Pellet stove", RELAY_ENTITY].entity_id
+        hass.states.async_set(RELAY_ENTITY, "on")
+        await hass.async_block_till_done()
+        assert hass.states.get(relay_mirror).state == "on"
+        bindings = {key: val for key, val in entry.data[BINDINGS].items() if key != RELAY}
+        hass.config_entries.async_update_entry(entry, options={**entry.data, BINDINGS: bindings})
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert registry.async_get(relay_mirror) is None
+        assert registry.async_get(RELAY_ENTITY) is not None
+        service.assert_not_called()
+
+
 async def test_data_status_and_temperature_fallback(hass, household):
     """Keep usable inputs when other roles go offline, move or disappear."""
     (living, bedroom), entities = household
@@ -417,12 +465,22 @@ async def test_freshness_defaults_and_overrides(hass, household):
     primary = household[1]["living_room_air"]
     tariff = "sensor.import_price"
     inputs = Inputs(hass)
-    profile = {BINDINGS: {PRIMARY: inputs.bind(primary), "import_price": inputs.bind(tariff)}}
-    now = max(hass.states.get(entity).last_reported for entity in (primary, tariff))
+    profile = {BINDINGS: {
+        PRIMARY: inputs.bind(primary),
+        BACKUP: inputs.bind(UNASSIGNED),
+        "import_price": inputs.bind(tariff),
+    }}
+    now = max(hass.states.get(entity).last_reported for entity in (primary, UNASSIGNED, tariff))
     with patch("custom_components.lahems2.inputs.utcnow", return_value=now + timedelta(minutes=15)):
         default = inputs.snapshot(profile)
         assert default["roles"]["Import price"]["status"] == "Stale reading"
         assert default["roles"]["Primary indoor temperature"]["status"] == "Stale reading"
+        stale = default["roles"]["Backup indoor temperature"]
+        assert stale["status"] == "Stale reading"
+        assert stale["entity_id"] == UNASSIGNED
+        assert stale["reading"] == "20"
+        assert stale["last_reported"] == hass.states.get(UNASSIGNED).last_reported.isoformat()
+        assert stale["max_age_minutes"] == 15
         assert default["active_indoor_source"] is None
         profile[SETTINGS] = {TEMPERATURE_MAX_AGE: 30, TARIFF_MAX_AGE: 15}
         adjusted = inputs.snapshot(profile)

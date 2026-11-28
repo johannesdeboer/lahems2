@@ -296,14 +296,16 @@
           "pellet_serves_forecast_load": "Allow the stove to replace the configured heat pump forecast load",
           "pellet_price_per_kg": "Pellet price per kg (Home Assistant currency)",
           "pellet_useful_heat_kwh_per_kg": "Useful heat delivered per kg (kWh/kg)",
-          "pellet_max_output_kw": "Available thermal output (kW)",
-          "heat_pump_cop": "Assumed heat pump COP"
+          "pellet_max_output_kw": "Pellet stove heat output available to replace heat pump heat (kW)",
+          "heat_pump_cop": "Assumed COP of the heat pump being replaced"
         },
         "data_description": {
           "pellet_stock": "For a stove without a hopper sensor, use a Number helper in kg and update it when you check the hopper. Leave blank if stock is unknown. Percent estimates also require full hopper capacity.",
           "pellet_serves_forecast_load": "Enable only if the selected Heat pump electrical demand forecast describes zones the stove can actually heat.",
-          "pellet_useful_heat_kwh_per_kg": "Enter the useful heat after stove losses. Use the fuel specification and stove efficiency.",
-          "heat_pump_cop": "Heat delivered divided by electricity used. Use a representative value for this forecast."
+          "pellet_price_per_kg": "Divide the price paid by the weight in kg. For example, EUR 7.50 for a 15 kg bag is EUR 0.50/kg.",
+          "pellet_useful_heat_kwh_per_kg": "Multiply the pellets' net calorific value (kWh/kg) by the stove efficiency. For example, 5.00 kWh/kg × 94% = 4.70 kWh/kg. If the fuel sheet uses MJ/kg, divide by 3.6 first. Count the same heat destinations here as in the output field below.",
+          "pellet_max_output_kw": "Enter the stove's useful heat output available to the rooms or heating circuit in the selected forecast. Use the water-side rating if only heat to the circuit can replace the forecast load. Include direct room heat only where it replaces that load. Use thermal kW from the stove's specification.",
+          "heat_pump_cop": "Enter thermal output divided by electrical input for the heat pump represented by the forecast. Match the outside and supply-water temperatures to typical heating conditions. For example, 8.2 kW of heat from 2.25 kW of electricity gives a COP of about 3.65."
         }
       }
     },

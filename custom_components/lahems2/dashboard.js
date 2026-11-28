@@ -84,6 +84,8 @@ const STYLES = `
     .chart-time span:nth-child(even) { display: none; }
   }
   .attention { margin-top: 12px; }
+  .attention li + li { margin-top: 10px; }
+  .attention li p { overflow-wrap: anywhere; }
   ul { margin: 8px 0 0; padding-inline-start: 20px; }
 `;
 
@@ -250,7 +252,37 @@ class Lahems2Overview extends HTMLElement {
     const issues = Object.entries(status?.attributes.roles ?? {})
       .filter(([, reading]) => !["Available", "Not configured"].includes(reading.status));
     const list = element("ul");
-    for (const [name, reading] of issues) list.append(element("li", `${name}: ${reading.status}`));
+    for (const [name, reading] of issues) {
+      const item = element("li");
+      item.append(element("strong", `${name} · ${reading.status}`));
+      if (reading.entity_id) {
+        const source = reading.entity_name && reading.entity_name !== reading.entity_id
+          ? `${reading.entity_name} (${reading.entity_id})` : reading.entity_id;
+        item.append(element("p", source, "detail"));
+      }
+      if (reading.reading != null) {
+        item.append(element("p", `Last value: ${reading.reading}${reading.unit ? ` ${reading.unit}` : ""}`, "detail"));
+      }
+      if (reading.last_reported) {
+        item.append(element("p", `Last reported: ${this.clock.format(new Date(reading.last_reported))}`, "detail"));
+      }
+      if (reading.status === "Stale reading" && reading.max_age_minutes != null) {
+        item.append(element("p",
+          `LAHEMS2 stops using this reading after ${reading.max_age_minutes} minutes without a new report.`,
+          "detail",
+        ));
+      }
+      if (reading.status === "Missing source") {
+        item.append(element("p", "Select a source for this input in Configure LAHEMS2.", "detail"));
+      }
+      if (reading.entity_renamed && reading.previous_entity_id) {
+        item.append(element("p", `Previous entity ID: ${reading.previous_entity_id}`, "detail"));
+      }
+      if (reading.area_changed) {
+        item.append(element("p", `Area changed from ${reading.previous_area} to ${reading.current_area}.`, "detail"));
+      }
+      list.append(item);
+    }
     this.attention.replaceChildren(element("h2", "Data status"), element("p", usableState(status, "Waiting for LAHEMS2")));
     if (issues.length) this.attention.append(list);
   }

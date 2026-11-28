@@ -45,6 +45,22 @@ _SOURCE_HINTS = {
 _TARIFF_WORDS = {"price", "tariff", "rate", "prijs", "tarief", "cost"}
 
 
+def input_bindings(profile: dict):
+    """Yield role keys, display labels, bindings and the owning battery index."""
+    bindings = profile.get(BINDINGS, {})
+    for key, role in ROLES.items():
+        if role.multiple:
+            configured = bindings.get(key, [])
+            for index, binding in enumerate(configured or [None], 1):
+                label = f"{role.label} {index}" if configured else role.label
+                yield key, label, role, binding, None
+        else:
+            yield key, role.label, role, bindings.get(key), None
+    for index, battery in enumerate(profile.get(BATTERIES, []), 1):
+        for key, role in BATTERY_ROLES.items():
+            yield key, f"Battery {index} · {role.label}", role, battery[BINDINGS].get(key), index
+
+
 @dataclass(frozen=True)
 class Candidate:
     """A state or registry entity available for selection."""
@@ -193,6 +209,7 @@ class Inputs:
         if not candidate:
             result["status"] = "Entity missing"
             return result
+        result["entity_name"] = candidate.name
         result["area_changed"] = candidate.area != binding.get("area")
         if result["area_changed"]:
             result["previous_area"] = self.area_name(binding.get("area"))
@@ -204,6 +221,10 @@ class Inputs:
             return result
 
         state = self.hass.states.get(entity_id)
+        if max_age_minutes is not None:
+            result["max_age_minutes"] = max_age_minutes
+        if state is not None:
+            result["last_reported"] = state.last_reported.isoformat()
         if state is None or state.state == "unavailable":
             result["status"] = "Unavailable"
             return result
@@ -213,9 +234,6 @@ class Inputs:
 
         result["reading"] = state.state
         result["unit"] = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
-        if max_age_minutes is not None:
-            result["last_reported"] = state.last_reported.isoformat()
-            result["max_age_minutes"] = max_age_minutes
         if not matches_role(candidate, role):
             result["status"] = "Unexpected entity type"
         elif (role.numeric and numeric_value(state.state) is None) or (
@@ -242,26 +260,13 @@ class Inputs:
 
     def snapshot(self, profile: dict) -> dict:
         """Produce role-level data status and the active indoor measurement."""
-        readings = {}
-        bindings = profile.get(BINDINGS, {})
         prefs = FRESHNESS_DEFAULTS | profile.get(SETTINGS, {})
-        for key, role in ROLES.items():
-            if role.multiple:
-                configured = bindings.get(key, [])
-                for index, binding in enumerate(configured or [None], 1):
-                    label = f"{role.label} {index}" if configured else role.label
-                    readings[label] = self.reading(
-                        key, role, binding, max_age_minutes=prefs.get(role.freshness_setting),
-                    )
-            else:
-                readings[role.label] = self.reading(
-                    key, role, bindings.get(key), max_age_minutes=prefs.get(role.freshness_setting)
-                )
-        for index, battery in enumerate(profile.get(BATTERIES, []), 1):
-            for key, role in BATTERY_ROLES.items():
-                readings[f"Battery {index} · {role.label}"] = self.reading(
-                    key, role, battery[BINDINGS].get(key)
-                )
+        readings = {
+            label: self.reading(
+                key, role, binding, max_age_minutes=prefs.get(role.freshness_setting)
+            )
+            for key, label, role, binding, _ in input_bindings(profile)
+        }
         active = active_temperature(readings[ROLES[PRIMARY].label], readings[ROLES[BACKUP].label])
         schedule = readings[ROLES["ev_schedule"].label]
         schedule_state = self.hass.states.get(schedule["entity_id"]) if schedule["usable"] else None
